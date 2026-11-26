@@ -7,7 +7,7 @@ import * as calc from "../lib/calc";
 import * as steps from "../lib/steps";
 import { toText } from "../lib/ingest";
 import { canonico, type SchemaName } from "../lib/schemas";
-import { checar } from "../lib/validate";
+import { checar, checarDados, checarRascunho } from "../lib/validate";
 import type { Analise } from "../lib/types";
 
 const fx = (n: string) => path.join(__dirname, "fixtures", n);
@@ -29,7 +29,7 @@ async function rodar() {
   const diag = await steps.diagnosticar(lead, an, aloc, chat);
   const [dec, notas] = await steps.fechar(lead, an, aloc, diag, { data_r2: "2026-11-13" }, chat);
   const [avisos, pend] = checar(lead, ao.ativos, an, aloc, diag, dec, notas, tr);
-  return { calls, ao, lead, an, aloc, avisos, pend };
+  return { calls, ao, lead, an, aloc, diag, dec, notas, tr, avisos, pend };
 }
 
 describe("paridade com o Python", () => {
@@ -60,6 +60,13 @@ describe("paridade com o Python", () => {
     const r = await rodar();
     expect(r.avisos).toEqual(esperado.avisos);
     expect(r.pend).toEqual(esperado.pendencias);
+  });
+
+  it("checar() = checarRascunho() + checarDados(), na ordem atual", async () => {
+    const r = await rodar();
+    const [avD, pendD] = checarDados(r.lead, r.ao.ativos, r.an, r.tr);
+    expect([...checarRascunho(r.lead, r.ao.ativos, r.an, r.aloc, r.diag, r.dec, r.notas), ...avD]).toEqual(r.avisos);
+    expect(pendD).toEqual(r.pend);
   });
 
   it("formatação brl/mil/pct", () => {

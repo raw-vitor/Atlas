@@ -1,5 +1,5 @@
 import type { Caso } from "./caso";
-import { prontidao, valoresParaCarteira } from "./caso";
+import { avisosDosDados, prontidao, valoresParaCarteira } from "./caso";
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const TIPOS: Record<string, string> = { extrato: "extrato", transcricao_r1: "transcrição da R1", deck_anterior: "deck anterior", anotacoes: "anotações", outro: "outro documento" };
@@ -20,6 +20,9 @@ export function resumoDoCaso(c: Caso, novos: string[]): string {
   }
   for (const a of c.avisosLeitura) l.push(`Atenção: ${a}`);
   for (const p of c.pendenciasCarteira) l.push(`Atenção: ${p}`);
+  const dados = avisosDosDados(c);
+  if (dados.avisos.length) l.push(`Avisos do método:\n${dados.avisos.map((a) => `- ${a}`).join("\n")}`);
+  if (dados.pendencias.length) l.push(`Pendências a validar antes da R2:\n${dados.pendencias.map((a) => `- ${a}`).join("\n")}`);
   const pr = prontidao(c);
   if (pr.pronto) {
     const padrao = [!c.assessor && "assessor", !c.dataR2 && "data da R2"].filter(Boolean);

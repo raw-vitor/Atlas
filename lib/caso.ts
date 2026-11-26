@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import { config } from "./config";
 import { valoresCitados } from "./citados";
+import { checarDados } from "./validate";
 import { eSubstituivelPorExtrato } from "./triagem-llm";
 import type { Alocacao, Analise, Ativo, Decisao, Diagnostico, Lead, Notas } from "./types";
 
@@ -137,6 +138,7 @@ export function valoresParaCarteira(c: Caso): string[] {
 
 /** Estado enviado ao navegador: sem o texto das fontes. */
 export function publicoCaso(c: Caso) {
+  const dados = avisosDosDados(c);
   return {
     id: c.id,
     fontes: c.fontes.map((f) => ({ nome: f.nome, papel: f.papel, origemPapel: f.origemPapel, tipo: f.tipo ?? null })),
@@ -144,8 +146,33 @@ export function publicoCaso(c: Caso) {
     lead: c.lead ? { nome: limparNome(c.lead.primeiro_nome), perfil: c.lead.perfil, objetivos: c.lead.objetivos, aporteMensal: c.lead.aporte_mensal, lacunas: c.lead.lacunas } : null,
     carteira: c.analise ? { total: c.analise.total, nAtivos: c.analise.n_ativos, pctClasse: c.analise.pct_classe } : null,
     avisos: c.avisosLeitura, pendencias: c.pendenciasCarteira,
+    avisosMetodo: dados.avisos, pendenciasMetodo: dados.pendencias,
     opcoes: valoresParaCarteira(c).length ? [{ id: "usar_transcricao" as const, rotulo: "Usar valores da transcrição" }] : [],
     rascunhoPronto: !!c.rascunho, decks: c.decks, prontidao: prontidao(c), ocupado: c.ocupado,
   };
 }
 export type CasoPublico = ReturnType<typeof publicoCaso>;
+
+export const MAX_TRANSCRICAO_CHARS = 200_000;
+
+/** Uma transcrição vai como está. Várias são juntadas em ordem de nome; acima do limite, só a maior. */
+export function juntarTranscricoes(textos: { nome: string; texto: string }[]): { texto: string; aviso?: string } {
+  if (textos.length === 1) return { texto: textos[0].texto };
+  const junto = textos.map((t) => `--- transcrição: ${t.nome} ---\n${t.texto}`).join("\n\n");
+  if (junto.length <= MAX_TRANSCRICAO_CHARS) return { texto: junto };
+  const maior = textos.reduce((a, b) => (b.texto.length > a.texto.length ? b : a));
+  return { texto: maior.texto, aviso: `As transcrições passam de ${MAX_TRANSCRICAO_CHARS} caracteres juntas. Usei só a maior (${maior.nome}).` };
+}
+
+/** Transcrições do caso em ordem de nome, juntadas como o rascunho faz. */
+export function transcricaoJunta(c: Caso): { texto: string; aviso?: string } {
+  const trs = c.fontes.filter((f) => f.papel === "transcricao").sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR", { numeric: true }));
+  return trs.length ? juntarTranscricoes(trs) : { texto: "" };
+}
+
+/** Avisos e pendências do método que dependem só dos dados lidos. Puro sobre o estado do caso. */
+export function avisosDosDados(c: Caso): { avisos: string[]; pendencias: string[] } {
+  if (!c.lead || !c.analise) return { avisos: [], pendencias: [] };
+  const [avisos, pendencias] = checarDados(c.lead, c.ativos, c.analise, transcricaoJunta(c).texto);
+  return { avisos, pendencias };
+}

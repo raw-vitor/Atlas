@@ -43,3 +43,22 @@ describe("resumo: o que fazer quando falta algo", () => {
     expect(resumoDoCaso(casoAvulso(), [])).toBe("Falta a carteira do lead e a transcrição da R1. Anexe os arquivos ou cole o texto aqui.");
   });
 });
+
+describe("resumo: avisos do método logo após a leitura", () => {
+  const analise = { total: 1000, n_ativos: 1, excedente_fgc: 0, excedente_fgc_a_validar: false } as never;
+  it("citação ausente da transcrição aparece sem rascunho, com as pendências fixas", () => {
+    const c = caso("Lead: quero aposentar.", lead({ frases_literais: ["isso nunca foi dito"] }));
+    c.analise = analise;
+    c.ativos = [];
+    const t = resumoDoCaso(c, []);
+    expect(t).toContain("Avisos do método:\n- Citação não encontrada literalmente na transcrição");
+    expect(t).toContain("Pendências a validar antes da R2:\n- custo de não fazer nada");
+    expect(publicoCaso(c).avisosMetodo).toHaveLength(1);
+  });
+  it("sem carteira (analise vazia) o bloco não aparece", () => {
+    const c = caso("Lead: oi.", lead({ frases_literais: ["nunca dito"] }));
+    const t = resumoDoCaso(c, []);
+    expect(t).not.toContain("Avisos do método");
+    expect(publicoCaso(c).pendenciasMetodo).toEqual([]);
+  });
+});

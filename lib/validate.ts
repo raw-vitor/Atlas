@@ -30,10 +30,32 @@ export function valores(txt: string): number[] {
   return out;
 }
 
-export function checar(lead: Lead, ativos: Ativo[], an: Analise, aloc: Alocacao, diag: Diagnostico, dec: Decisao,
-  notas: Notas, transcricao: string): [string[], string[]] {
+/** Regras que só dependem dos dados lidos: citação na transcrição e pendências. */
+export function checarDados(lead: Lead, ativos: Ativo[], an: Analise, transcricao: string): [string[], string[]] {
   const avisos: string[] = [];
   const pend: string[] = [];
+  const tn = norm(transcricao);
+  for (const fr of lead.frases_literais)
+    if (norm(fr) && !tn.includes(norm(fr))) avisos.push(`Citação não encontrada literalmente na transcrição: "${fr.slice(0, 60)}…"`);
+
+  if (an.excedente_fgc > 0 && an.excedente_fgc_a_validar)
+    pend.push("confirmar se os papéis bancários são do mesmo conglomerado (define o excedente do FGC)");
+  const semLiq = ativos.filter((a) => !a.fora_do_depara && (!a.liquidez.trim() || a.liquidez.toLowerCase().includes("confirmar"))).map((a) => a.nome);
+  if (semLiq.length) pend.push("liquidez diária × portabilidade, taxa, carência e vencimento de: " + [...new Set(semLiq)].join(", "));
+  pend.push("custo de não fazer nada em R$ (precisa das taxas dos ativos atuais)");
+  pend.push("regras do arquivo 09 (IR, FGC, macro) são de 08/10/2026: reconfirmar por busca antes de usar");
+  return [avisos, pend];
+}
+
+export function checar(lead: Lead, ativos: Ativo[], an: Analise, aloc: Alocacao, diag: Diagnostico, dec: Decisao,
+  notas: Notas, transcricao: string): [string[], string[]] {
+  const [avisosDados, pend] = checarDados(lead, ativos, an, transcricao);
+  return [[...checarRascunho(lead, ativos, an, aloc, diag, dec, notas), ...avisosDados], pend];
+}
+
+export function checarRascunho(lead: Lead, ativos: Ativo[], an: Analise, aloc: Alocacao, diag: Diagnostico, dec: Decisao,
+  notas: Notas): string[] {
+  const avisos: string[] = [];
 
   const soma = aloc.classes.reduce((s, c) => s + c.pct_proposto, 0);
   if (Math.abs(soma - 100) > 0.5) avisos.push(`Proposta soma ${pyFixed(soma, 0)}% (esperado 100%).`);
@@ -68,16 +90,5 @@ export function checar(lead: Lead, ativos: Ativo[], an: Analise, aloc: Alocacao,
   for (const v of valores([dDiag, dDec].join(" ")))
     if (v > 1000 && ![...fatos].some((f) => Math.abs(v - f) <= Math.max(1000, f * 0.02)))
       avisos.push(`Valor R$ ${commaFixed(v, 0)} nos slides não bate com os números calculados (confira).`.replace(/,/g, "."));
-
-  const tn = norm(transcricao);
-  for (const fr of lead.frases_literais)
-    if (norm(fr) && !tn.includes(norm(fr))) avisos.push(`Citação não encontrada literalmente na transcrição: "${fr.slice(0, 60)}…"`);
-
-  if (an.excedente_fgc > 0 && an.excedente_fgc_a_validar)
-    pend.push("confirmar se os papéis bancários são do mesmo conglomerado (define o excedente do FGC)");
-  const semLiq = ativos.filter((a) => !a.fora_do_depara && (!a.liquidez.trim() || a.liquidez.toLowerCase().includes("confirmar"))).map((a) => a.nome);
-  if (semLiq.length) pend.push("liquidez diária × portabilidade, taxa, carência e vencimento de: " + [...new Set(semLiq)].join(", "));
-  pend.push("custo de não fazer nada em R$ (precisa das taxas dos ativos atuais)");
-  pend.push("regras do arquivo 09 (IR, FGC, macro) são de 08/10/2026: reconfirmar por busca antes de usar");
-  return [avisos, pend];
+  return avisos;
 }

@@ -20,6 +20,7 @@ export interface CasoPublico {
   lead: { nome: string; perfil: string; objetivos: string[]; aporteMensal: number; lacunas: string[] } | null;
   carteira: { total: number; nAtivos: number; pctClasse: Record<string, number> } | null;
   avisos: string[]; pendencias: string[];
+  avisosMetodo: string[]; pendenciasMetodo: string[];
   opcoes: { id: "usar_transcricao"; rotulo: string }[];
   rascunhoPronto: boolean; decks: { jobId: string; versao: number; criadoEm: number }[];
   prontidao: { pronto: boolean; faltas: string[]; faltasAcoes: string[] }; ocupado: boolean;

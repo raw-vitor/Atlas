@@ -10,9 +10,9 @@ import type { ChatJson } from "./steps";
 import type { Uso } from "./bedrock";
 import type { Ativo } from "./types";
 import { CONFIANCA_MINIMA, classificarPorConteudo } from "./classificacao";
-import { aplicarAjustes, casoAvulso, eDerivada, hashTexto, limparNome, NOME_FONTE_DERIVADA, removerDerivada, type Caso } from "./caso";
+import { MAX_TRANSCRICAO_CHARS, juntarTranscricoes, transcricaoJunta, aplicarAjustes, casoAvulso, eDerivada, hashTexto, limparNome, NOME_FONTE_DERIVADA, removerDerivada, type Caso } from "./caso";
 
-export const MAX_TRANSCRICAO_CHARS = 200_000;
+export { MAX_TRANSCRICAO_CHARS, juntarTranscricoes };
 
 const chave = (nome: string) => nome.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
@@ -48,15 +48,6 @@ export function dataMaisRecente(datas: string[]): string {
   let melhor = "", ts = -Infinity;
   for (const d of datas) { const t = paraData(d); if (t !== null && t > ts) { ts = t; melhor = d; } }
   return melhor || datas.find((d) => d) || "";
-}
-
-/** Uma transcrição vai como está. Várias são juntadas em ordem de nome; acima do limite, só a maior. */
-export function juntarTranscricoes(textos: { nome: string; texto: string }[]): { texto: string; aviso?: string } {
-  if (textos.length === 1) return { texto: textos[0].texto };
-  const junto = textos.map((t) => `--- transcrição: ${t.nome} ---\n${t.texto}`).join("\n\n");
-  if (junto.length <= MAX_TRANSCRICAO_CHARS) return { texto: junto };
-  const maior = textos.reduce((a, b) => (b.texto.length > a.texto.length ? b : a));
-  return { texto: maior.texto, aviso: `As transcrições passam de ${MAX_TRANSCRICAO_CHARS} caracteres juntas. Usei só a maior (${maior.nome}).` };
 }
 
 export interface Anexo { nome: string; buf: Buffer; texto?: string }
@@ -152,8 +143,7 @@ const yyyymmdd = (s: string) => s.replace(/-/g, "");
 export async function rascunho(caso: Caso, chat: ChatJson, p: Progress, pct0 = 0, pct1 = 85): Promise<void> {
   const lead = caso.lead, an = caso.analise;
   if (!lead || !an) throw new Error("Faltam a carteira e os dados do lead para montar o rascunho.");
-  const trs = caso.fontes.filter((f) => f.papel === "transcricao").sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR", { numeric: true }));
-  const jt = trs.length ? juntarTranscricoes(trs) : { texto: "" };
+  const jt = transcricaoJunta(caso);
   const dataR2 = caso.dataR2 ?? ymd(new Date());
   const f = (x: number) => Math.round(pct0 + (pct1 - pct0) * x);
 
