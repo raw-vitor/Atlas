@@ -1,0 +1,103 @@
+{
+ "properties": {
+  "relembrando": {
+   "title": "Relembrando",
+   "type": "string"
+  },
+  "macro_rf": {
+   "title": "Macro Rf",
+   "type": "string"
+  },
+  "macro_curva": {
+   "title": "Macro Curva",
+   "type": "string"
+  },
+  "macro_exterior": {
+   "title": "Macro Exterior",
+   "type": "string"
+  },
+  "consolidada": {
+   "title": "Consolidada",
+   "type": "string"
+  },
+  "disse": {
+   "title": "Disse",
+   "type": "string"
+  },
+  "acertou": {
+   "title": "Acertou",
+   "type": "string"
+  },
+  "riscos": {
+   "title": "Riscos",
+   "type": "string"
+  },
+  "ganho": {
+   "title": "Ganho",
+   "type": "string"
+  },
+  "falta": {
+   "title": "Falta",
+   "type": "string"
+  },
+  "de_para": {
+   "title": "De Para",
+   "type": "string"
+  },
+  "movimentos": {
+   "title": "Movimentos",
+   "type": "string"
+  },
+  "mapa": {
+   "title": "Mapa",
+   "type": "string"
+  },
+  "aporte": {
+   "title": "Aporte",
+   "type": "string"
+  },
+  "resumo": {
+   "title": "Resumo",
+   "type": "string"
+  },
+  "diferencial": {
+   "title": "Diferencial",
+   "type": "string"
+  },
+  "perguntas": {
+   "title": "Perguntas",
+   "type": "string"
+  },
+  "decisao": {
+   "title": "Decisao",
+   "type": "string"
+  },
+  "proximos": {
+   "title": "Proximos",
+   "type": "string"
+  }
+ },
+ "required": [
+  "relembrando",
+  "macro_rf",
+  "macro_curva",
+  "macro_exterior",
+  "consolidada",
+  "disse",
+  "acertou",
+  "riscos",
+  "ganho",
+  "falta",
+  "de_para",
+  "movimentos",
+  "mapa",
+  "aporte",
+  "resumo",
+  "diferencial",
+  "perguntas",
+  "decisao",
+  "proximos"
+ ],
+ "title": "Notas",
+ "type": "object"
+}

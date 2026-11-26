@@ -1,0 +1,97 @@
+{
+ "$defs": {
+  "Ativo": {
+   "properties": {
+    "nome": {
+     "description": "Nome do ativo como no extrato, ex.: CDB DI, Tesouro IPCA+ 2035",
+     "title": "Nome",
+     "type": "string"
+    },
+    "emissor": {
+     "description": "Banco/emissor. Vazio se o arquivo não informa",
+     "title": "Emissor",
+     "type": "string"
+    },
+    "classe": {
+     "enum": [
+      "Pós-fixado",
+      "Pré-fixado",
+      "Inflação (IPCA+)",
+      "Multimercado",
+      "RF Internacional",
+      "RV Internacional",
+      "Ações Brasil",
+      "FIIs",
+      "Alternativos"
+     ],
+     "title": "Classe",
+     "type": "string"
+    },
+    "subclasse": {
+     "description": "Só para renda fixa local; 'n/a' nas demais",
+     "enum": [
+      "Soberano",
+      "Bancário com FGC",
+      "High Grade",
+      "High Yield",
+      "n/a"
+     ],
+     "title": "Subclasse",
+     "type": "string"
+    },
+    "liquidez": {
+     "description": "diária, D+N, no vencimento ou 'a confirmar'",
+     "title": "Liquidez",
+     "type": "string"
+    },
+    "vencimento": {
+     "description": "Data ou vazio",
+     "title": "Vencimento",
+     "type": "string"
+    },
+    "valor": {
+     "description": "Valor bruto em reais, número puro",
+     "title": "Valor",
+     "type": "number"
+    },
+    "fora_do_depara": {
+     "description": "true para previdência fechada, imóvel, participação em empresa: entra no plano, não se move",
+     "title": "Fora Do Depara",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "nome",
+    "emissor",
+    "classe",
+    "subclasse",
+    "liquidez",
+    "vencimento",
+    "valor",
+    "fora_do_depara"
+   ],
+   "title": "Ativo",
+   "type": "object"
+  }
+ },
+ "properties": {
+  "ativos": {
+   "items": {
+    "$ref": "#/$defs/Ativo"
+   },
+   "title": "Ativos",
+   "type": "array"
+  },
+  "data_posicao": {
+   "description": "Data da posição no formato DD/MM/AAAA, ou vazio",
+   "title": "Data Posicao",
+   "type": "string"
+  }
+ },
+ "required": [
+  "ativos",
+  "data_posicao"
+ ],
+ "title": "AtivosOut",
+ "type": "object"
+}

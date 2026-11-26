@@ -1,0 +1,154 @@
+{
+ "$defs": {
+  "Card": {
+   "properties": {
+    "titulo": {
+     "description": "até 28 caracteres",
+     "title": "Titulo",
+     "type": "string"
+    },
+    "texto": {
+     "description": "até 95 caracteres",
+     "title": "Texto",
+     "type": "string"
+    }
+   },
+   "required": [
+    "titulo",
+    "texto"
+   ],
+   "title": "Card",
+   "type": "object"
+  },
+  "ClasseAlvo": {
+   "properties": {
+    "classe": {
+     "enum": [
+      "Pós-fixado",
+      "Pré-fixado",
+      "Inflação (IPCA+)",
+      "Multimercado",
+      "RF Internacional",
+      "RV Internacional",
+      "Ações Brasil",
+      "FIIs",
+      "Alternativos"
+     ],
+     "title": "Classe",
+     "type": "string"
+    },
+    "pct_proposto": {
+     "description": "Percentual proposto 0-100",
+     "title": "Pct Proposto",
+     "type": "number"
+    },
+    "para_detalhe": {
+     "description": "Classe · subclasse · prazo, SEM produto nem emissor. Até 60 caracteres",
+     "title": "Para Detalhe",
+     "type": "string"
+    },
+    "porque": {
+     "description": "Motivo ligado ao lead, até 70 caracteres",
+     "title": "Porque",
+     "type": "string"
+    },
+    "objetivo": {
+     "description": "Objetivo do lead que esta classe atende, 2 a 4 palavras, ex.: Reserva de liquidez",
+     "title": "Objetivo",
+     "type": "string"
+    },
+    "fase": {
+     "enum": [
+      1,
+      2,
+      3
+     ],
+     "title": "Fase",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "classe",
+    "pct_proposto",
+    "para_detalhe",
+    "porque",
+    "objetivo",
+    "fase"
+   ],
+   "title": "ClasseAlvo",
+   "type": "object"
+  },
+  "Fase": {
+   "properties": {
+    "fase": {
+     "enum": [
+      1,
+      2,
+      3
+     ],
+     "title": "Fase",
+     "type": "integer"
+    },
+    "descricao": {
+     "description": "até 90 caracteres",
+     "title": "Descricao",
+     "type": "string"
+    }
+   },
+   "required": [
+    "fase",
+    "descricao"
+   ],
+   "title": "Fase",
+   "type": "object"
+  }
+ },
+ "properties": {
+  "titulo_slide": {
+   "description": "Título do slide De→Para, até 45 caracteres",
+   "title": "Titulo Slide",
+   "type": "string"
+  },
+  "classes": {
+   "items": {
+    "$ref": "#/$defs/ClasseAlvo"
+   },
+   "title": "Classes",
+   "type": "array"
+  },
+  "cards": {
+   "description": "exatamente 3 cards",
+   "items": {
+    "$ref": "#/$defs/Card"
+   },
+   "maxItems": 3,
+   "minItems": 3,
+   "title": "Cards",
+   "type": "array"
+  },
+  "fases": {
+   "description": "exatamente 3 fases",
+   "items": {
+    "$ref": "#/$defs/Fase"
+   },
+   "maxItems": 3,
+   "minItems": 3,
+   "title": "Fases",
+   "type": "array"
+  },
+  "sub_rf_texto": {
+   "description": "Frase sobre subclasses de renda fixa local, até 200 caracteres",
+   "title": "Sub Rf Texto",
+   "type": "string"
+  }
+ },
+ "required": [
+  "titulo_slide",
+  "classes",
+  "cards",
+  "fases",
+  "sub_rf_texto"
+ ],
+ "title": "Alocacao",
+ "type": "object"
+}

@@ -1,0 +1,71 @@
+{
+ "CLASSES": [
+  "Pós-fixado",
+  "Pré-fixado",
+  "Inflação (IPCA+)",
+  "Multimercado",
+  "RF Internacional",
+  "RV Internacional",
+  "Ações Brasil",
+  "FIIs",
+  "Alternativos"
+ ],
+ "MODELO": {
+  "Conservador": [
+   60,
+   10,
+   15,
+   0,
+   15,
+   0,
+   0,
+   0,
+   0
+  ],
+  "Conservador/Moderado": [
+   50,
+   15,
+   20,
+   0,
+   10,
+   5,
+   0,
+   0,
+   0
+  ],
+  "Moderado": [
+   45,
+   15,
+   20,
+   0,
+   10,
+   5,
+   5,
+   0,
+   0
+  ],
+  "Moderado/Arrojado": [
+   40,
+   10,
+   15,
+   0,
+   5,
+   10,
+   10,
+   5,
+   5
+  ],
+  "Arrojado": [
+   35,
+   10,
+   15,
+   0,
+   0,
+   15,
+   10,
+   10,
+   5
+  ]
+ },
+ "SCHEMA_HASH": "5464b6238b072dc01020430b1001b3b0648d739c840e1a277b069b788e676591"
+}

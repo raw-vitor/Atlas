@@ -1,0 +1,227 @@
+{
+ "$defs": {
+  "Acerto": {
+   "properties": {
+    "numero": {
+     "title": "Numero",
+     "type": "string"
+    },
+    "titulo": {
+     "description": "até 40 caracteres",
+     "title": "Titulo",
+     "type": "string"
+    },
+    "texto": {
+     "description": "até 90 caracteres",
+     "title": "Texto",
+     "type": "string"
+    }
+   },
+   "required": [
+    "numero",
+    "titulo",
+    "texto"
+   ],
+   "title": "Acerto",
+   "type": "object"
+  },
+  "DisseNumero": {
+   "properties": {
+    "frase": {
+     "description": "Citação literal do lead, até 110 caracteres",
+     "title": "Frase",
+     "type": "string"
+    },
+    "numero": {
+     "description": "Um número dos FATOS (ex.: 'R$ 490 mil', '0%'). Nunca invente",
+     "title": "Numero",
+     "type": "string"
+    },
+    "leitura": {
+     "description": "até 80 caracteres",
+     "title": "Leitura",
+     "type": "string"
+    }
+   },
+   "required": [
+    "frase",
+    "numero",
+    "leitura"
+   ],
+   "title": "DisseNumero",
+   "type": "object"
+  },
+  "Passo": {
+   "properties": {
+    "titulo": {
+     "title": "Titulo",
+     "type": "string"
+    },
+    "texto": {
+     "description": "até 90 caracteres",
+     "title": "Texto",
+     "type": "string"
+    }
+   },
+   "required": [
+    "titulo",
+    "texto"
+   ],
+   "title": "Passo",
+   "type": "object"
+  },
+  "Risco": {
+   "properties": {
+    "rotulo": {
+     "enum": [
+      "PRINCIPAL RISCO ESCONDIDO",
+      "ATENÇÃO"
+     ],
+     "title": "Rotulo",
+     "type": "string"
+    },
+    "numero": {
+     "description": "Número dos FATOS",
+     "title": "Numero",
+     "type": "string"
+    },
+    "texto": {
+     "description": "até 90 caracteres",
+     "title": "Texto",
+     "type": "string"
+    }
+   },
+   "required": [
+    "rotulo",
+    "numero",
+    "texto"
+   ],
+   "title": "Risco",
+   "type": "object"
+  }
+ },
+ "properties": {
+  "frase_contradicao": {
+   "description": "O que o lead disse × o que a carteira faz, com as palavras dele",
+   "title": "Frase Contradicao",
+   "type": "string"
+  },
+  "disse": {
+   "description": "até 3, uma por citação literal disponível em frases_literais; menos se faltarem citações",
+   "items": {
+    "$ref": "#/$defs/DisseNumero"
+   },
+   "maxItems": 3,
+   "title": "Disse",
+   "type": "array"
+  },
+  "titulo_disse": {
+   "description": "até 55 caracteres",
+   "title": "Titulo Disse",
+   "type": "string"
+  },
+  "acertos": {
+   "description": "exatamente 3",
+   "items": {
+    "$ref": "#/$defs/Acerto"
+   },
+   "maxItems": 3,
+   "minItems": 3,
+   "title": "Acertos",
+   "type": "array"
+  },
+  "titulo_acertou": {
+   "description": "até 55 caracteres",
+   "title": "Titulo Acertou",
+   "type": "string"
+  },
+  "riscos": {
+   "description": "exatamente 4; o primeiro é o PRINCIPAL RISCO ESCONDIDO",
+   "items": {
+    "$ref": "#/$defs/Risco"
+   },
+   "maxItems": 4,
+   "minItems": 4,
+   "title": "Riscos",
+   "type": "array"
+  },
+  "titulo_riscos": {
+   "description": "até 55 caracteres",
+   "title": "Titulo Riscos",
+   "type": "string"
+  },
+  "ganho_titulo": {
+   "description": "Título do primeiro ganho, até 60 caracteres",
+   "title": "Ganho Titulo",
+   "type": "string"
+  },
+  "ganho_numero": {
+   "description": "Número do FATOS",
+   "title": "Ganho Numero",
+   "type": "string"
+  },
+  "ganho_descricao": {
+   "description": "até 90 caracteres, sem valores em R$ que não estejam nos FATOS",
+   "title": "Ganho Descricao",
+   "type": "string"
+  },
+  "ganho_detalhes": {
+   "description": "3 linhas curtas: risco novo, classe, ganho em R$ (a confirmar se faltar taxa)",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 3,
+   "minItems": 3,
+   "title": "Ganho Detalhes",
+   "type": "array"
+  },
+  "ganho_passos": {
+   "description": "exatamente 3",
+   "items": {
+    "$ref": "#/$defs/Passo"
+   },
+   "maxItems": 3,
+   "minItems": 3,
+   "title": "Ganho Passos",
+   "type": "array"
+  },
+  "falta": {
+   "description": "exatamente 4: o que não está na carteira",
+   "items": {
+    "$ref": "#/$defs/Passo"
+   },
+   "maxItems": 4,
+   "minItems": 4,
+   "title": "Falta",
+   "type": "array"
+  },
+  "perguntas": {
+   "description": "exatamente 5, até 110 caracteres",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 5,
+   "minItems": 5,
+   "title": "Perguntas",
+   "type": "array"
+  }
+ },
+ "required": [
+  "frase_contradicao",
+  "disse",
+  "titulo_disse",
+  "acertos",
+  "titulo_acertou",
+  "riscos",
+  "titulo_riscos",
+  "ganho_titulo",
+  "ganho_numero",
+  "ganho_descricao",
+  "ganho_detalhes",
+  "ganho_passos",
+  "falta",
+  "perguntas"
+ ],
+ "title": "Diagnostico",
+ "type": "object"
+}

@@ -1,0 +1,100 @@
+{
+ "properties": {
+  "primeiro_nome": {
+   "title": "Primeiro Nome",
+   "type": "string"
+  },
+  "situacao": {
+   "description": "4 bullets curtos (até 70 caracteres): família, profissão, o que já tem, experiência",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 4,
+   "minItems": 4,
+   "title": "Situacao",
+   "type": "array"
+  },
+  "objetivos": {
+   "description": "4 bullets curtos (até 70 caracteres) com as palavras do lead",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 4,
+   "minItems": 4,
+   "title": "Objetivos",
+   "type": "array"
+  },
+  "restricoes": {
+   "description": "4 bullets curtos (até 70 caracteres): liquidez, tempo, medos, orçamento",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 4,
+   "minItems": 4,
+   "title": "Restricoes",
+   "type": "array"
+  },
+  "frases_literais": {
+   "description": "até 5 citações LITERAIS do lead, copiadas da transcrição, até 140 caracteres cada; menos se a transcrição não tiver, nunca invente",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 5,
+   "title": "Frases Literais",
+   "type": "array"
+  },
+  "perfil": {
+   "enum": [
+    "Conservador",
+    "Conservador/Moderado",
+    "Moderado",
+    "Moderado/Arrojado",
+    "Arrojado"
+   ],
+   "title": "Perfil",
+   "type": "string"
+  },
+  "freio_principal": {
+   "enum": [
+    "custo financeiro",
+    "esforço",
+    "risco percebido",
+    "relacionamento"
+   ],
+   "title": "Freio Principal",
+   "type": "string"
+  },
+  "aporte_mensal": {
+   "description": "Aporte mensal em reais; 0 se não citou",
+   "title": "Aporte Mensal",
+   "type": "number"
+  },
+  "meta_patrimonio_citada": {
+   "description": "O que o lead disse sobre patrimônio/valor para começar, ou vazio",
+   "title": "Meta Patrimonio Citada",
+   "type": "string"
+  },
+  "lacunas": {
+   "description": "Perguntas que a R1 deixou sem resposta, até 5",
+   "items": {
+    "type": "string"
+   },
+   "title": "Lacunas",
+   "type": "array"
+  }
+ },
+ "required": [
+  "primeiro_nome",
+  "situacao",
+  "objetivos",
+  "restricoes",
+  "frases_literais",
+  "perfil",
+  "freio_principal",
+  "aporte_mensal",
+  "meta_patrimonio_citada",
+  "lacunas"
+ ],
+ "title": "Lead",
+ "type": "object"
+}

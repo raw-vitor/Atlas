@@ -1,0 +1,81 @@
+{
+ "properties": {
+  "hoje_numero": {
+   "description": "Número do FATOS",
+   "title": "Hoje Numero",
+   "type": "string"
+  },
+  "hoje_texto": {
+   "description": "até 50 caracteres",
+   "title": "Hoje Texto",
+   "type": "string"
+  },
+  "hoje_detalhes": {
+   "description": "2 linhas curtas",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 2,
+   "minItems": 2,
+   "title": "Hoje Detalhes",
+   "type": "array"
+  },
+  "pedido": {
+   "description": "Um pedido só, até 60 caracteres",
+   "title": "Pedido",
+   "type": "string"
+  },
+  "garantias": {
+   "description": "3 linhas curtas (até 70 caracteres)",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 3,
+   "minItems": 3,
+   "title": "Garantias",
+   "type": "array"
+  },
+  "condicoes": {
+   "description": "3 linhas curtas (até 80 caracteres)",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 3,
+   "minItems": 3,
+   "title": "Condicoes",
+   "type": "array"
+  },
+  "resumo_itens": {
+   "description": "6 itens curtos para o slide Resumo (até 85 caracteres), sem numeração",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 6,
+   "minItems": 6,
+   "title": "Resumo Itens",
+   "type": "array"
+  },
+  "frase_lead_repete": {
+   "title": "Frase Lead Repete",
+   "type": "string"
+  },
+  "diferencial_motivo": {
+   "description": "Por que o slide de Especialização das Funções serve a este lead",
+   "title": "Diferencial Motivo",
+   "type": "string"
+  }
+ },
+ "required": [
+  "hoje_numero",
+  "hoje_texto",
+  "hoje_detalhes",
+  "pedido",
+  "garantias",
+  "condicoes",
+  "resumo_itens",
+  "frase_lead_repete",
+  "diferencial_motivo"
+ ],
+ "title": "Decisao",
+ "type": "object"
+}
