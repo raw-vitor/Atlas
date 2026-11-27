@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning className={geist.variable}>
+    <html lang="pt-BR" className={`light ${geist.variable}`} style={{ colorScheme: "light" }}>
       <body>
         <Provider>{children}</Provider>
       </body>

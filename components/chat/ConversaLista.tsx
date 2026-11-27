@@ -1,6 +1,6 @@
 "use client";
-import { Box, Button, Dialog, Flex, Heading, IconButton, Menu, Portal, Skeleton, Stack, Text, VisuallyHidden } from "@chakra-ui/react";
-import { useEffect, useRef, useState } from "react";
+import { Box, Button, CloseButton, Dialog, Drawer, Flex, Heading, IconButton, Menu, Portal, Skeleton, Stack, Text, VisuallyHidden } from "@chakra-ui/react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LuEllipsis, LuPlus, LuTrash2 } from "react-icons/lu";
 import { AtlasOrb } from "@/components/atlas/AtlasOrb";
 import { pctDe } from "./contexto";
@@ -26,7 +26,8 @@ interface Props {
 /** Mostra um ponto só nas conversas com o contexto quase cheio (85% ou mais). */
 const pctItem = (c: ConversaResumo) => pctDe(c.ctxTokens, c.ctxLimite);
 
-export function ConversaLista({ itens, estado, temMais, carregandoMais, erroMais, ativaId, erroApagar, onSelecionar, onNova, onMais, onTentar, onApagar }: Props) {
+/** Conteúdo da lista (cabeçalho, itens, paginação e diálogo de apagar). Usado na lateral (md ou mais) e na gaveta (celular). */
+function Painel({ itens, estado, temMais, carregandoMais, erroMais, ativaId, erroApagar, onSelecionar, onNova, onMais, onTentar, onApagar, fechar }: Props & { fechar?: ReactNode }) {
   const rolagem = useRef<HTMLDivElement>(null);
   const fim = useRef<HTMLDivElement>(null);
   const [paraApagar, setParaApagar] = useState<ConversaResumo | null>(null);
@@ -43,8 +44,8 @@ export function ConversaLista({ itens, estado, temMais, carregandoMais, erroMais
   }, [temMais, carregandoMais, erroMais, estado, onMais, itens.length]);
 
   return (
-    <Flex direction="column" w="260px" bg="areia" borderRightWidth="1px" borderColor="nevoa" p="3" gap="3" display={{ base: "none", md: "flex" }} as="nav" aria-label="Conversas">
-      <Flex align="center" gap="2"><AtlasOrb tamanho={24} /><Heading size="md" color="profundo">Atlas</Heading></Flex>
+    <>
+      <Flex align="center" gap="2"><AtlasOrb tamanho={24} /><Heading size="md" color="profundo" flex="1">Atlas</Heading>{fechar}</Flex>
       <Button onClick={onNova} variant="outline" borderColor="profundo" color="profundo" justifyContent="flex-start"><LuPlus /> Nova conversa</Button>
       <Stack ref={rolagem} gap="1" overflowY="auto" flex="1" minH="0">
         {estado === "carregando" && Array.from({ length: 6 }, (_, i) => (
@@ -63,7 +64,7 @@ export function ConversaLista({ itens, estado, temMais, carregandoMais, erroMais
           return (
             <Flex key={c.id} role="group" align="center" gap="1" rounded="md" _hover={{ bg: ativa ? undefined : "nevoa" }} bg={ativa ? "nevoa" : undefined}>
               <Button flex="1" minW="0" variant="ghost" justifyContent="flex-start" size="sm" onClick={() => onSelecionar(c.id)}
-                aria-current={ativa ? "page" : undefined} title={c.titulo} _hover={{ bg: "transparent" }} truncate>{c.titulo}</Button>
+                aria-current={ativa ? "page" : undefined} title={c.titulo} _hover={{ bg: "transparent" }}><Box as="span" truncate minW="0">{c.titulo}</Box></Button>
               {pct >= 85 && (
                 <>
                   <Box w="6px" h="6px" rounded="full" flexShrink={0} bg={pct >= 95 ? "contexto.critico" : "contexto.alerta"} aria-hidden />
@@ -118,6 +119,34 @@ export function ConversaLista({ itens, estado, temMais, carregandoMais, erroMais
           </Dialog.Positioner>
         </Portal>
       </Dialog.Root>
+    </>
+  );
+}
+
+/** Lista fixa à esquerda, de md para cima. */
+export function ConversaLista(props: Props) {
+  return (
+    <Flex direction="column" w="260px" bg="areia" borderRightWidth="1px" borderColor="nevoa" p="3" gap="3" display={{ base: "none", md: "flex" }} as="nav" aria-label="Conversas">
+      <Painel {...props} />
     </Flex>
+  );
+}
+
+/** A mesma lista numa gaveta, para telas estreitas. Escolher uma conversa ou criar uma nova fecha a gaveta. */
+export function ConversaGaveta({ aberta, onFechar, onSelecionar, onNova, ...resto }: Props & { aberta: boolean; onFechar: () => void }) {
+  return (
+    <Drawer.Root open={aberta} onOpenChange={(e) => { if (!e.open) onFechar(); }} placement="start" size="xs" lazyMount unmountOnExit>
+      <Portal>
+        <Drawer.Backdrop />
+        <Drawer.Positioner>
+          <Drawer.Content bg="areia" color="floresta" maxW="min(300px, 85vw)">
+            <Drawer.Body as="nav" aria-label="Conversas" display="flex" flexDirection="column" gap="3" p="3">
+              <Painel {...resto} onSelecionar={(id) => { onSelecionar(id); onFechar(); }} onNova={() => { onNova(); onFechar(); }}
+                fechar={<CloseButton size="sm" aria-label="Fechar a lista de conversas" onClick={onFechar} />} />
+            </Drawer.Body>
+          </Drawer.Content>
+        </Drawer.Positioner>
+      </Portal>
+    </Drawer.Root>
   );
 }

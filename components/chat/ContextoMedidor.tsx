@@ -15,7 +15,8 @@ export function ContextoMedidor({ tokens, limite, estimado, partes }: { tokens?:
   const rotulo = `Contexto da conversa em ${pct}%${estimado ? " (estimado)" : ""}`;
   return (
     <Tooltip content={<Box>{linhas.map((l, i) => <Text key={i} fontSize="xs" opacity={i === 0 ? 1 : 0.85}>{l}</Text>)}</Box>}
-      positioning={{ placement: "top" }} openDelay={150} closeDelay={0}>
+      positioning={{ placement: "top" }} openDelay={150} closeDelay={0}
+      contentProps={{ css: { "--tooltip-bg": "colors.profundo" }, color: "neve", px: "3", py: "2", rounded: "md", borderWidth: "1px", borderColor: "menta" }}>
       <Flex w={LARGURA} h="10" flexShrink={0} align="center" justify="flex-end" gap="1.5" tabIndex={0} role="img" aria-label={rotulo}
         rounded="md" cursor="default" _focusVisible={{ outline: "2px solid", outlineColor: "eqi", outlineOffset: "1px" }}>
         {pct >= 60 && <Text fontSize="xs" color="profundo" fontVariantNumeric="tabular-nums" aria-hidden>{pct}%</Text>}

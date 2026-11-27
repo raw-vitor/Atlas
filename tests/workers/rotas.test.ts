@@ -467,6 +467,20 @@ describe("anexos (PUT, streaming para o R2)", () => {
     });
     expect(r.status).toBe(411);
   });
+
+  it("411 com Transfer-Encoding: chunked e sem Content-Length; nada é gravado no R2", async () => {
+    const conv = await novaConversa(A);
+    const corpo = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("a;b\n1;2")); c.close(); } });
+    const r = await buscar(`/api/conversas/${conv}/anexos?nome=a.csv`, {
+      method: "PUT",
+      headers: { "x-atlas-dev-usuario": A, "transfer-encoding": "chunked" },
+      body: corpo,
+      duplex: "half",
+    });
+    expect(r.status).toBe(411);
+    expect((await r.json()).erro).toMatch(/Content-Length/);
+    expect(await objetosR2(await doUsuario(A), conv)).toHaveLength(0);
+  });
 });
 
 describe("gerar slides (acoes)", () => {

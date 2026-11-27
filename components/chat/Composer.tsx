@@ -52,8 +52,8 @@ export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onC
             onChange={(e) => { adicionar(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
           <IconButton aria-label="Anexar arquivos" variant="ghost" onClick={() => input.current?.click()}><LuPaperclip /></IconButton>
           <Textarea
-            ref={campo} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ex.: R2 do Elisandro, dia 13/11, assessor Luiz"
-            autoresize maxH="10lh" rows={1} border="none" outline="none" resize="none" _focusVisible={{ outline: "none", boxShadow: "none" }}
+            ref={campo} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ex.: R2 do Elisandro, 13/11"
+            autoresize maxH="10lh" rows={1} css={{ "&::placeholder": { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }} border="none" outline="none" resize="none" _focusVisible={{ outline: "none", boxShadow: "none" }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (podeEnviar) onEnviar(); } }}
           />
           {medidor}

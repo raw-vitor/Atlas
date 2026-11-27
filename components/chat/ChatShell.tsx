@@ -10,7 +10,7 @@ import {
 import { Composer } from "./Composer";
 import { ContextoAlerta } from "./ContextoAlerta";
 import { ContextoMedidor } from "./ContextoMedidor";
-import { ConversaLista, type EstadoLista } from "./ConversaLista";
+import { ConversaGaveta, ConversaLista, type EstadoLista } from "./ConversaLista";
 import { pctDe } from "./contexto";
 import {
   AVISO_CANCELADO, aplicarEvento, avisoLocal, criarGerenciadorEventos, type EstadoConexao, type EventoServidor,
@@ -47,6 +47,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
   const [ativaId, setAtivaId] = useState(conversaInicial ?? RASCUNHO);
   const [conexao, setConexao] = useState<{ id: string; estado: EstadoConexao }>({ id: "", estado: "ok" });
   const [menu, setMenu] = useState(true);
+  const [gaveta, setGaveta] = useState(false);
   const [texto, setTexto] = useState("");
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [arrastando, setArrastando] = useState(false);
@@ -169,8 +170,12 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
       if (e.nome === "fim" && e.dados.status === "cancelada" && antes && tarefaAtiva(antes.tarefa) && antes.tarefa.tipo === "turno") {
         // O que o assessor tinha escrito volta para o campo, como antes de a conversa ser persistida.
         const msg = antes.mensagens.find((m) => m.id === antes.turnoMsgId);
-        const devolver = msg?.tipo === "usuario" ? { texto: msg.texto, files: pendencias.current.get(msg.id)?.files ?? [] } : null;
+        const devolver = msg?.tipo === "usuario" ? { texto: msg.texto, files: pendencias.current.get(msg.idCliente ?? msg.id)?.files ?? [] } : null;
         if (devolver && cid === ativaRef.current) { setTexto((t) => t || devolver.texto); setArquivos((a) => (a.length ? a : devolver.files)); }
+      }
+      if (e.nome === "fim" && antes?.turnoMsgId) {
+        const m = antes.mensagens.find((x) => x.id === antes.turnoMsgId);
+        if (m?.tipo === "usuario") pendencias.current.delete(m.idCliente ?? m.id);
       }
       if (e.nome === "estado" && e.dados.tarefa === null && Date.now() - (aceitaEm.current.get(cid) ?? 0) < JANELA_ESTADO_ATRASADO_MS) {
         // `estado` tirado antes de a tarefa existir: ignora e confere no servidor depois.
@@ -237,7 +242,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
 
       envio.fase = "post";
       const r = await enviarMensagem(cid, { texto: textoMsg, anexos: pend.chaves.filter((c): c is string => !!c), idCliente });
-      pendencias.current.delete(idCliente);
+      // Os arquivos ficam guardados até o `fim` do turno: se ele for cancelado, voltam para o campo.
       aceitaEm.current.set(cid, Date.now());
       const titulo = tituloProvisorio(textoMsg, pend.files.map((f) => f.name));
       atualizar(cid, (c) => {
@@ -381,10 +386,16 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
   const pctProgresso = ativa.progresso?.pct ?? null;
   const pendente: Pendente | null = ativaTarefa ? { parcial: ativa.parcial, msg: msgProgresso, pct: pctProgresso, fila: ativa.fila, aviso } : null;
 
-  // Primeiro processamento de carteira + transcrição: mantém o círculo grande até o deck ficar pronto.
-  const processandoPrimeira = ativaTarefa
-    && ativa.mensagens.some((m) => m.tipo === "usuario" && m.anexos.length > 0)
-    && !ativa.mensagens.some((m) => m.tipo === "resultado");
+  // Primeira leitura de carteira + transcrição: círculo grande no centro. Vale só enquanto a última mensagem do assessor
+  // traz anexos e o Atlas ainda não respondeu a ela; perguntas e a geração dos slides ficam na lista, com o progresso.
+  const processandoPrimeira = (() => {
+    if (!ocupada || (ativaTarefa && ativa.tarefa?.tipo === "deck")) return false;
+    const ms = ativa.mensagens;
+    let i = ms.length - 1;
+    while (i >= 0 && ms[i].tipo !== "usuario") { if (ms[i].tipo === "atlas") return false; i--; }
+    const ultima = ms[i];
+    return ultima?.tipo === "usuario" && ultima.anexos.length > 0 && !ms.some((m) => m.tipo === "resultado");
+  })();
   // Ao terminar, a esfera grande fica na tela até voltar à forma normal (aoAssentar) e só então some a tela central.
   const [segurando, setSegurando] = useState(false);
   const [antes, setAntes] = useState(false);
@@ -408,9 +419,14 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
           onSelecionar={abrir} onNova={novaConversa} onMais={() => void carregarMais()}
           onTentar={() => { setEstadoLista("carregando"); void buscarLista(); }} onApagar={(c) => void apagar(c)} />
       )}
+      <ConversaGaveta aberta={gaveta} onFechar={() => setGaveta(false)} itens={lista} estado={estadoLista} temMais={cursor !== null}
+        carregandoMais={carregandoMais} erroMais={erroMais} ativaId={ativaId === RASCUNHO ? null : ativaId} erroApagar={erroApagar}
+        onSelecionar={abrir} onNova={novaConversa} onMais={() => void carregarMais()}
+        onTentar={() => { setEstadoLista("carregando"); void buscarLista(); }} onApagar={(c) => void apagar(c)} />
       <Flex direction="column" flex="1" minW="0" position="relative">
         <Flex px="3" py="2" align="center" gap="2" minH="12">
           <IconButton aria-label="Alternar lista de conversas" variant="ghost" onClick={() => setMenu((m) => !m)} display={{ base: "none", md: "inline-flex" }}><LuMenu /></IconButton>
+          <IconButton aria-label="Abrir a lista de conversas" variant="ghost" onClick={() => setGaveta(true)} display={{ base: "inline-flex", md: "none" }}><LuMenu /></IconButton>
           {!vazia && carregada && <Text fontWeight="medium" truncate>{titulo}</Text>}
         </Flex>
         {ativa.carga === "carregando" ? (

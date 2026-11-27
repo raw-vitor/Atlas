@@ -15,14 +15,14 @@ export function ContextoAlerta({ pct, vistos, onVisto }: { pct: number | null; v
   const critico = faixa === 95;
   return (
     <Box w="full" maxW="820px" mx="auto" px="4" pb="2" aria-live="polite" aria-atomic="true">
-      <Flex minH="11" align="center">
+      <Flex minH={{ base: "14", sm: "11" }} align="center">
         <Flex w="full" align="center" gap="3" rounded="lg" px="3" py="2" bg={critico ? "contexto.critico.bg" : "contexto.alerta.bg"}
           color={critico ? "contexto.critico.fg" : "floresta"} borderWidth="1px" borderColor={critico ? "contexto.critico.bg" : "nevoa"}
           opacity={visivel ? 1 : 0} visibility={visivel ? "visible" : "hidden"}
           transition="opacity 0.25s ease, visibility 0s linear" css={{ transitionDelay: visivel ? "0s" : "0s, 0.25s" }}>
-          {faixa >= 85 && <Text fontSize="xs" fontWeight="bold" letterSpacing="wider" flexShrink={0}>ATENÇÃO</Text>}
-          <Text fontSize="sm" flex="1" minW="0">{textoAlerta(faixa, pct)}</Text>
-          <Button size="2xs" variant="ghost" flexShrink={0} color="inherit" _hover={{ bg: critico ? "profundo" : "nevoa" }} onClick={() => onVisto(faixa)}>
+          {faixa >= 85 && <Text display={{ base: "none", sm: "block" }} fontSize="xs" fontWeight="bold" letterSpacing="wider" flexShrink={0}>ATENÇÃO</Text>}
+          <Text fontSize={{ base: "xs", sm: "sm" }} flex="1" minW="0">{textoAlerta(faixa, pct)}</Text>
+          <Button size="xs" variant="ghost" flexShrink={0} color="inherit" _hover={{ bg: critico ? "profundo" : "nevoa" }} onClick={() => onVisto(faixa)}>
             {critico ? "Fechar" : "Entendi"}
           </Button>
         </Flex>

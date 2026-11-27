@@ -51,7 +51,7 @@ const ROTULO_PARTES: [keyof Contexto["partes"], string][] = [
 /** Linhas do tooltip: "Contexto: 38% (76 mil de 200 mil tokens)", as partes e a marca de estimado. */
 export function descreverContexto(tokens: number, limite: number, estimado = false, partes?: Contexto["partes"]): string[] {
   const pct = pctDe(tokens, limite);
-  const linhas = [`Contexto: ${pct}% (${formatarTokens(tokens)} de ${formatarTokens(limite)} tokens)`];
+  const linhas = [`Contexto: ${pct}% (${formatarTokens(tokens)} de ${formatarTokens(limite)}${/milh/.test(formatarTokens(limite)) ? " de" : ""} tokens)`];
   if (partes) {
     const p = ROTULO_PARTES.filter(([k]) => partes[k] > 0).map(([k, r]) => `${r} ${formatarTokens(partes[k])}`);
     if (p.length) linhas.push(p.join(" · "));
