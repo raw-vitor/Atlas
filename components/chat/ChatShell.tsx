@@ -4,6 +4,7 @@ import NextLink from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LuMenu, LuSettings, LuSquare } from "react-icons/lu";
 import { AtlasOrb } from "@/components/atlas/AtlasOrb";
+import { Entrada, type FaseEntrada } from "@/components/atlas/Entrada";
 import { AVISO_SESSAO_EXPIRADA } from "@/components/sessao";
 import { UsuarioSessao } from "@/components/UsuarioSessao";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -41,7 +42,11 @@ const atualizarUrl = (id: string | null) => {
   if (typeof window !== "undefined") window.history.replaceState(null, "", id ? `?c=${id}` : window.location.pathname);
 };
 
-export function ChatShell({ conversaInicial, email, sair = false }: { conversaInicial?: string; email?: string | null; sair?: boolean }) {
+export function ChatShell({ conversaInicial, email, sair = false, entrada: comEntrada = false }: {
+  conversaInicial?: string; email?: string | null; sair?: boolean;
+  /** Abre com a animação de entrada (logo depois do login, ver app/page.tsx). */
+  entrada?: boolean;
+}) {
   const [lista, setLista] = useState<ConversaResumo[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [estadoLista, setEstadoLista] = useState<EstadoLista>("carregando");
@@ -455,25 +460,30 @@ export function ChatShell({ conversaInicial, email, sair = false }: { conversaIn
     if (window.matchMedia("(max-width: 640px), (max-height: 760px)").matches) setTamanhoOrb(200);
   }, []);
   const central = carregada && (vazia || processandoPrimeira || segurando);
+  const [entrada, setEntrada] = useState<FaseEntrada>(comEntrada ? "inicio" : "fim");
+  const entradaPronta = ativa.carga !== "carregando" && estadoLista !== "carregando";
 
   return (
-    <Flex h="100dvh" bg="neve" color="floresta"
+    <Flex h="100dvh" bg="neve" color="floresta" data-entrada={entrada === "fim" ? undefined : entrada}
       onDragEnter={(e) => { e.preventDefault(); profundidade.current++; setArrastando(true); }}
       onDragOver={(e) => e.preventDefault()}
       onDragLeave={() => { profundidade.current = Math.max(0, profundidade.current - 1); if (!profundidade.current) setArrastando(false); }}
       onDrop={(e) => { e.preventDefault(); profundidade.current = 0; setArrastando(false); setArquivos((a) => [...a, ...Array.from(e.dataTransfer.files)]); }}>
+      {entrada !== "fim" && <Entrada fase={entrada} aoMudar={setEntrada} pronto={entradaPronta} tamanho={tamanhoOrb} />}
       {menu && (
-        <ConversaLista itens={lista} estado={estadoLista} temMais={cursor !== null} carregandoMais={carregandoMais} erroMais={erroMais}
-          ativaId={ativaId === RASCUNHO ? null : ativaId} erroApagar={erroApagar}
-          onSelecionar={abrir} onNova={novaConversa} onMais={() => void carregarMais()}
-          onTentar={() => { setEstadoLista("carregando"); void buscarLista(); }} onApagar={(c) => void apagar(c)} />
+        <Flex className="entrada-lateral" flexShrink={0} display={{ base: "none", md: "flex" }}>
+          <ConversaLista itens={lista} estado={estadoLista} temMais={cursor !== null} carregandoMais={carregandoMais} erroMais={erroMais}
+            ativaId={ativaId === RASCUNHO ? null : ativaId} erroApagar={erroApagar}
+            onSelecionar={abrir} onNova={novaConversa} onMais={() => void carregarMais()}
+            onTentar={() => { setEstadoLista("carregando"); void buscarLista(); }} onApagar={(c) => void apagar(c)} />
+        </Flex>
       )}
       <ConversaGaveta aberta={gaveta} onFechar={() => setGaveta(false)} itens={lista} estado={estadoLista} temMais={cursor !== null}
         carregandoMais={carregandoMais} erroMais={erroMais} ativaId={ativaId === RASCUNHO ? null : ativaId} erroApagar={erroApagar}
         onSelecionar={abrir} onNova={novaConversa} onMais={() => void carregarMais()}
         onTentar={() => { setEstadoLista("carregando"); void buscarLista(); }} onApagar={(c) => void apagar(c)} />
       <Flex direction="column" flex="1" minW="0" position="relative">
-        <Flex px="3" py="2" align="center" gap="2" minH="12">
+        <Flex className="entrada-topo" px="3" py="2" align="center" gap="2" minH="12">
           <IconButton aria-label="Alternar lista de conversas" variant="ghost" onClick={() => setMenu((m) => !m)} display={{ base: "none", md: "inline-flex" }}><LuMenu /></IconButton>
           <IconButton aria-label="Abrir a lista de conversas" variant="ghost" onClick={() => setGaveta(true)} display={{ base: "inline-flex", md: "none" }}><LuMenu /></IconButton>
           {!vazia && carregada && <Text fontWeight="medium" truncate>{titulo}</Text>}
@@ -508,7 +518,9 @@ export function ChatShell({ conversaInicial, email, sair = false }: { conversaIn
         ) : central ? (
           // Uma única esfera na tela vazia, no processamento e na volta: assim ela não é recriada e a transição é contínua.
           <Flex flex="1" direction="column" align="center" justify="center" gap="5" px="4" textAlign="center">
-            <AtlasOrb destaque tamanho={tamanhoOrb} crescimento={1.6} ampliar={processandoPrimeira} estado={ocupada ? "pensando" : "parado"} aoAssentar={() => setSegurando(false)} />
+            <Box data-entrada-alvo>
+              <AtlasOrb destaque tamanho={tamanhoOrb} crescimento={1.6} ampliar={processandoPrimeira} estado={ocupada ? "pensando" : "parado"} aoAssentar={() => setSegurando(false)} />
+            </Box>
             {processandoPrimeira ? (
               <>
                 <Heading size="2xl" color="profundo">Processando a carteira e a transcrição…</Heading>
@@ -516,10 +528,10 @@ export function ChatShell({ conversaInicial, email, sair = false }: { conversaIn
                 <Button onClick={cancelar} loading={cancelandoAtiva} loadingText="Cancelando…" variant="outline" borderColor="profundo" color="profundo" size="sm"><LuSquare /> Cancelar</Button>
               </>
             ) : vazia ? (
-              <>
+              <Stack className="entrada-texto" align="center" gap="5">
                 <Heading size="2xl" color="profundo">Olá, sou o Atlas.</Heading>
                 <Text color="floresta" maxW="440px">Anexe a carteira e a transcrição da R1. Eu leio os dois e, quando você pedir, monto o deck da R2 em PPTX e PDF.</Text>
-              </>
+              </Stack>
             ) : null}
           </Flex>
         ) : (
@@ -543,11 +555,13 @@ export function ChatShell({ conversaInicial, email, sair = false }: { conversaIn
             {ativa.caso.decks.length === 0 && <Text fontSize="sm" color="profundo">Os slides só saem quando você pedir.</Text>}
           </Flex>
         )}
+        <Box className="entrada-baixo">
         <Composer texto={texto} setTexto={setTexto} arquivos={arquivos} setArquivos={setArquivos} onEnviar={() => enviar()} onCancelar={cancelar}
           desabilitado={ocupada} cancelando={cancelandoAtiva} foco={foco}
           medidor={<ContextoMedidor tokens={ctxPct == null ? undefined : ctxTokens} limite={ctxPct == null ? undefined : ctxLimite}
             estimado={ativa.contexto?.estimado} partes={ativa.contexto?.partes} />}
           alerta={<ContextoAlerta pct={ctxPct} vistos={ativa.alertasVistos} onVisto={marcarVisto} />} />
+        </Box>
         {arrastando && (
           <Flex position="absolute" inset="0" bg="rgba(0,64,49,.88)" color="neve" align="center" justify="center" zIndex="10" pointerEvents="none" rounded="xl" m="2" borderWidth="2px" borderStyle="dashed" borderColor="menta">
             <Heading size="xl">Solte aqui a carteira e a transcrição</Heading>
