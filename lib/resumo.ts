@@ -27,14 +27,16 @@ export function resumoDoCaso(c: Caso, novos: string[], avisosTriagem: string[] =
   if (info.length) l.push(info.join("\n"));
 
   // Só o que o assessor precisa resolver. As pendências fixas do método ficam no painel do deck.
+  // Com rascunho, os avisos são os mesmos do cartão do deck (já incluem as citações).
   const dados = avisosDosDados(c);
   const citacoes = dados.avisos.length;
   const fixas = new Set(PENDENCIAS_FIXAS);
-  const antes = [
+  const antes = [...new Set([
     ...c.avisosLeitura, ...c.pendenciasCarteira, ...avisosTriagem,
     ...dados.pendencias.filter((p) => !fixas.has(p)).map((p) => p.charAt(0).toUpperCase() + p.slice(1)),
-    ...(citacoes ? [`${citacoes} ${citacoes === 1 ? "citação do lead não bate" : "citações do lead não batem"} com a transcrição`] : []),
-  ];
+    ...(c.rascunho ? c.rascunho.avisos.map((a) => a.texto)
+      : citacoes ? [`${citacoes} ${citacoes === 1 ? "citação do lead não bate" : "citações do lead não batem"} com a transcrição`] : []),
+  ])];
   if (antes.length) l.push(`Antes da R2:\n${antes.map((a) => `- ${a}`).join("\n")}`);
 
   const pr = prontidao(c);

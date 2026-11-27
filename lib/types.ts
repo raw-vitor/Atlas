@@ -28,6 +28,23 @@ export interface Decisao {
 }
 export type Notas = Record<string, string>;
 
+export type TipoAviso = "valor" | "citacao" | "alocacao" | "promessa" | "proibido" | "emissor" | "leitura";
+/** Aviso do método. A UI e o deck-service recebem só `texto`; o resto serve para explicar o aviso no chat. */
+export interface Aviso {
+  tipo: TipoAviso;
+  /** Frase pronta para a tela (diz onde e por quê). */
+  texto: string;
+  /** Por que o aviso existe, em linguagem do assessor (ex.: "não está nos números calculados nem na fala do lead"). */
+  motivo: string;
+  valor?: number;
+  /** Onde está, traduzido para o slide (ex.: "slide A Decisão, número de hoje"). */
+  campo?: string;
+  /** Trecho do texto em que o problema aparece. */
+  trecho?: string;
+  /** Quantas vezes o mesmo problema aparece (avisos deduplicados). */
+  ocorrencias?: number;
+}
+
 export interface Analise {
   total: number;
   por_classe: Record<string, number>;

@@ -1,0 +1,35 @@
+{
+	// Worker de teste: só os bindings do Atlas (sem o Next/OpenNext e sem Containers), para subir rápido em `npm run test:workers`.
+	// Mantém em sincronia com ../../wrangler.jsonc: nomes de bindings, fila e classes de DO.
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "atlas-teste",
+	"main": "entry.ts",
+	"compatibility_date": "2026-11-23",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"vars": { "ENVIRONMENT": "test" },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "atlas-db",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "../../migrations"
+		}
+	],
+	"r2_buckets": [{ "binding": "ARQUIVOS", "bucket_name": "atlas-arquivos" }],
+	"queues": {
+		"producers": [{ "binding": "TAREFAS", "queue": "atlas-tarefas" }],
+		"consumers": [
+			{
+				"queue": "atlas-tarefas",
+				"max_batch_size": 1,
+				"max_batch_timeout": 1,
+				"max_concurrency": 5,
+				"max_retries": 3,
+				"dead_letter_queue": "atlas-tarefas-mortas"
+			}
+		]
+	},
+	"durable_objects": { "bindings": [{ "name": "CONVERSA", "class_name": "Conversa" }] },
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conversa"] }],
+	"dev": { "enable_containers": false }
+}

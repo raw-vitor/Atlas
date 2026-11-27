@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanceladoError, comCancelamento, esperar } from "../lib/cancelamento";
 import { config } from "../lib/config";
 import { criarChatJson } from "../lib/bedrock";
-import * as jobs from "../lib/jobs";
-import { respostaSSE } from "../lib/sse";
 import { casoAvulso, copiarCaso, restaurarCaso } from "../lib/caso";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -46,46 +44,6 @@ describe("cancelamento no Bedrock", () => {
     const p = comCancelamento(ac.signal, () => esperar(60_000));
     ac.abort();
     await expect(p).rejects.toBeInstanceOf(CanceladoError);
-  });
-});
-
-describe("jobs", () => {
-  it("cancelar um job em execução termina em 'cancelado'", async () => {
-    const j = jobs.novo();
-    jobs.submeter(j, () => comCancelamento(j.ac.signal, () => esperar(60_000)).then(() => ({}) as never));
-    await new Promise((r) => setTimeout(r, 10));
-    expect(jobs.cancelar(j)).toBe(true);
-    await new Promise((r) => setTimeout(r, 10));
-    expect(j.status).toBe("cancelado");
-    expect(j.resultado).toBeNull();
-  });
-  it("cancelar um job que já terminou não muda nada", async () => {
-    const j = jobs.novo();
-    jobs.submeter(j, async () => ({ arquivos: {}, avisos: [], pendencias: [], resumo: { lead: "x", total: 1, perfil: "p" }, tokens: { chamadas: 0, entrada: 0, saida: 0 } }));
-    await new Promise((r) => setTimeout(r, 10));
-    expect(j.status).toBe("pronto");
-    expect(jobs.cancelar(j)).toBe(false);
-    expect(j.status).toBe("pronto");
-  });
-});
-
-describe("respostaSSE", () => {
-  it("fechar a conexão aborta o sinal entregue à função", async () => {
-    let recebido: AbortSignal | undefined;
-    const r = respostaSSE(async (_enviar, signal) => { recebido = signal; await new Promise((res) => signal.addEventListener("abort", () => res(null))); });
-    const leitor = r.body!.getReader();
-    await new Promise((res) => setTimeout(res, 10));
-    expect(recebido?.aborted).toBe(false);
-    await leitor.cancel();
-    expect(recebido?.aborted).toBe(true);
-  });
-  it("o sinal da requisição também aborta", async () => {
-    const req = new AbortController();
-    let recebido: AbortSignal | undefined;
-    respostaSSE(async (_e, signal) => { recebido = signal; await new Promise((res) => signal.addEventListener("abort", () => res(null))); }, req.signal);
-    await new Promise((res) => setTimeout(res, 10));
-    req.abort();
-    expect(recebido?.aborted).toBe(true);
   });
 });
 

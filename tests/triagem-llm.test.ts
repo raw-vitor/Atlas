@@ -11,7 +11,7 @@ import { amostra, papelDe, triarComLlm, type ClassLlm, type TriadorLlm } from ".
 
 const fx = (n: string) => path.join(__dirname, "fixtures", n);
 const canned = JSON.parse(fs.readFileSync(fx("canned.json"), "utf-8"));
-const uso = { chamadas: 0, entrada: 0, saida: 0 };
+const uso = { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 };
 const docx = fs.readFileSync(fx("transcricao_elisandro_docx.txt"));
 const csv = fs.readFileSync(fx("carteira_elisandro.csv"));
 const DECK = Buffer.from("Proposta preparada a partir da nossa conversa\nPreparado para Elisandro · Perfil Conservador\nObjetivos: aposentadoria aos 60\nCarteira consolidada: CDB DI R$ 739.668,62");

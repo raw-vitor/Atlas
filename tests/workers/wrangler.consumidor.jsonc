@@ -1,0 +1,48 @@
+{
+	// Worker de teste do consumidor da fila: consumidor real + D1/R2/DO reais do runtime local + dublês dos Containers (consumidor.entry.ts).
+	// Mantém em sincronia com ../../wrangler.jsonc: nomes de bindings, fila e classes de DO. BEDROCK_ENDPOINT vem do teste (vars do harness).
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "atlas-teste-consumidor",
+	"main": "consumidor.entry.ts",
+	"compatibility_date": "2026-11-23",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"vars": {
+		"ENVIRONMENT": "test",
+		"BEDROCK_API_KEY": "chave-de-teste",
+		"BEDROCK_ENDPOINT": "http://127.0.0.1:1",
+		"ATLAS_TRIAGEM_LLM": "0",
+		"ATLAS_BATIMENTO_MS": "200",
+		"ATLAS_TAREFAS_POR_ISOLATE": "3"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "atlas-db",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "../../migrations"
+		}
+	],
+	"r2_buckets": [{ "binding": "ARQUIVOS", "bucket_name": "atlas-arquivos" }],
+	"queues": {
+		"producers": [{ "binding": "TAREFAS", "queue": "atlas-tarefas" }],
+		"consumers": [
+			{
+				"queue": "atlas-tarefas",
+				"max_batch_size": 1,
+				"max_batch_timeout": 1,
+				"max_concurrency": 5,
+				"max_retries": 3,
+				"dead_letter_queue": "atlas-tarefas-mortas"
+			}
+		]
+	},
+	"durable_objects": {
+		"bindings": [
+			{ "name": "CONVERSA", "class_name": "Conversa" },
+			{ "name": "EXTRATOR", "class_name": "ExtratorFalso" },
+			{ "name": "DECK", "class_name": "DeckFalso" }
+		]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conversa", "ExtratorFalso", "DeckFalso"] }],
+	"dev": { "enable_containers": false }
+}

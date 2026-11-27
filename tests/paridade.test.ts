@@ -1,4 +1,4 @@
-/** Paridade com o Python: prompts, cálculos e validação precisam sair idênticos, caractere por caractere.
+/** Paridade com o Python: prompts e cálculos precisam sair idênticos, caractere por caractere (a validação diverge, ver checar()).
  *  Regerar a referência: (raiz) .venv/bin/python tests/parity_dump.py */
 import fs from "node:fs";
 import path from "node:path";
@@ -56,16 +56,26 @@ describe("paridade com o Python", () => {
     expect(r.aloc.classes.map((c) => c.pct_proposto)).toEqual(esperado.alocacao_pct);
   });
 
+  // Os avisos divergem de propósito de app/validate.py (esperado.avisos): valor deduplicado com campo e trecho,
+  // valores ditos pelo lead aceitos e norm() trocando pontuação por espaço. As pendências seguem iguais ao Python.
   it("checar(): avisos e pendências", async () => {
     const r = await rodar();
-    expect(r.avisos).toEqual(esperado.avisos);
+    expect(r.avisos.map((a) => a.texto)).toEqual([
+      "'Para' de Pós-fixado cita emissor/produto: \"Pós-fixado · Bradesco · curto\".",
+      "Inflação (IPCA+) desvia mais de 5 p.p. do modelo sem motivo escrito.",
+      "Possível promessa de rentabilidade: \"Garanto\".",
+      "Possível promessa de rentabilidade: \"vai render\".",
+      "R$ 123.456 no slide O que você já faz bem (\"texto R$ 123.456 inventado\"): não está nos números calculados nem na fala do lead. Confira. Aparece em 3 trechos.",
+      "R$ 479.000 no slide Riscos (\"R$ 479 mil\"): não está nos números calculados nem na fala do lead. Confira. Aparece em 6 trechos (slide Riscos; slide O primeiro ganho, número; slide A Decisão, número de hoje).",
+      "Citação não encontrada literalmente na transcrição: \"frase que não existe na reunião xyz…\"",
+    ]);
     expect(r.pend).toEqual(esperado.pendencias);
   });
 
   it("checar() = checarRascunho() + checarDados(), na ordem atual", async () => {
     const r = await rodar();
     const [avD, pendD] = checarDados(r.lead, r.ao.ativos, r.an, r.tr);
-    expect([...checarRascunho(r.lead, r.ao.ativos, r.an, r.aloc, r.diag, r.dec, r.notas), ...avD]).toEqual(r.avisos);
+    expect([...checarRascunho(r.lead, r.ao.ativos, r.an, r.aloc, r.diag, r.dec, r.notas, r.tr), ...avD]).toEqual(r.avisos);
     expect(pendD).toEqual(r.pend);
   });
 

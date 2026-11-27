@@ -1,0 +1,8 @@
+{
+	// Worker descartável da fase 0 (ver docs/FASE0_RELATORIO.md). Só roda local: wrangler dev -c spike/wrangler.jsonc
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"main": "src/index.ts",
+	"name": "atlas-spike",
+	"compatibility_date": "2026-11-23",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"]
+}

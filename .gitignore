@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# cloudflare (wrangler / opennext)
+.wrangler/
+.open-next/
+.dev.vars
+
+# gerado a partir de ../conhecimento (conteúdo interno, fora do git)
+/lib/knowledge.gerado.ts

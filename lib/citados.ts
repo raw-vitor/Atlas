@@ -29,3 +29,26 @@ export function valoresCitados(texto: string): string[] {
   }
   return out;
 }
+
+/** Número de um trecho achado por VALOR: "R$ 10 mil" → 10000, "1,2 milhão" → 1200000, "R$ 10.000" → 10000. */
+function numeroDoTrecho(t: string): number | null {
+  const n = t.match(new RegExp(NUM))?.[0];
+  if (!n) return null;
+  const v = Number(n.replace(/\./g, "").replace(",", "."));
+  if (!Number.isFinite(v)) return null;
+  const u = t.slice(t.indexOf(n) + n.length).toLowerCase();
+  return v * (/^\s*milh/.test(u) ? 1e6 : /^\s*mil/.test(u) ? 1e3 : 1);
+}
+
+/** Todos os valores em reais ditos pelo lead (sem o limite de valoresCitados), como números. Ignora a fala do assessor. */
+export function numerosCitados(texto: string): number[] {
+  const out: number[] = [];
+  for (const linha of texto.split(/\r\n|\r|\n/)) {
+    if (FALA_ASSESSOR.test(linha)) continue;
+    for (const m of linha.matchAll(VALOR)) {
+      const v = numeroDoTrecho(m[0]);
+      if (v !== null) out.push(v);
+    }
+  }
+  return out;
+}

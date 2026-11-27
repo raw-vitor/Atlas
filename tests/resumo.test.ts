@@ -56,6 +56,17 @@ describe("resumo: avisos do método logo após a leitura", () => {
     expect(t).not.toContain("arquivo 09");
     expect(publicoCaso(c).avisosMetodo).toHaveLength(1);
   });
+  it("com rascunho, lista os mesmos avisos do cartão do deck, sem a linha de contagem", () => {
+    const c = caso("Lead: quero aposentar.", lead({ frases_literais: ["isso nunca foi dito"] }));
+    c.analise = analise;
+    c.ativos = [];
+    const valor = 'R$ 200.000 no slide Riscos ("R$ 200.000"): não está nos números calculados nem na fala do lead. Confira.';
+    const citacao = 'Citação não encontrada literalmente na transcrição: "isso nunca foi dito…"';
+    c.rascunho = { avisos: [{ tipo: "valor", texto: valor, motivo: "" }, { tipo: "citacao", texto: citacao, motivo: "" }] } as never;
+    const t = resumoDoCaso(c, []);
+    expect(t).toContain(`Antes da R2:\n- ${valor}\n- ${citacao}`);
+    expect(t).not.toContain("citação do lead não bate");
+  });
   it("sem carteira (analise vazia) o bloco não aparece", () => {
     const c = caso("Lead: oi.", lead({ frases_literais: ["nunca dito"] }));
     const t = resumoDoCaso(c, []);

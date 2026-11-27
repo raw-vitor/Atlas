@@ -1,10 +1,14 @@
-/** O caso: estado de uma conversa no servidor. Em memória, com TTL, como os jobs. Nada do lead vai para o disco. */
+/**
+ * O caso: estado de uma conversa. Mora no Durable Object `Conversa` (fonte de verdade, com versão e trava por tarefa); o texto das
+ * fontes mora em R2 (`chaveFonte`), porque uma transcrição chega a 200 mil caracteres. Aqui ficam o tipo, a lógica pura sobre o caso
+ * e o carregar/salvar (`obterCaso`, `hidratarFontes`, `salvarCaso`). Nada do lead vai para o log.
+ */
 import crypto from "node:crypto";
-import { config } from "./config";
+import { chaveFonte } from "./r2";
 import { valoresCitados } from "./citados";
 import { checarDados } from "./validate";
 import { eSubstituivelPorExtrato } from "./triagem-llm";
-import type { Alocacao, Analise, Ativo, Decisao, Diagnostico, Lead, Notas } from "./types";
+import type { Alocacao, Analise, Ativo, Aviso, Decisao, Diagnostico, Lead, Notas } from "./types";
 
 /** "contexto": deck anterior, anotações e afins. Não é posição nem fala do lead; só ajuda a ler o lead. */
 export type PapelFonte = "carteira" | "transcricao" | "contexto";
@@ -20,13 +24,15 @@ export interface Fonte {
 export interface AjustesLead { primeiro_nome?: string; perfil?: string; objetivos?: string[] }
 export interface Rascunho {
   aloc: Alocacao; diag: Diagnostico; dec: Decisao; notas: Notas;
-  avisos: string[]; pendencias: string[]; dataR2: string;
+  avisos: Aviso[]; pendencias: string[]; dataR2: string;
 }
+export interface MensagemHistorico { papel: "assessor" | "atlas"; texto: string; quando: number }
+export const MAX_HISTORICO = 20;
 export interface Edicao { quando: number; campo: string; antes: unknown; depois: unknown; origem: "assessor" }
 export interface DeckVersao { jobId: string; versao: number; criadoEm: number }
 
 export interface Caso {
-  id: string; criado: number; atualizado: number; ocupado: boolean;
+  id: string; criado: number; atualizado: number;
   fontes: Fonte[];
   assessor?: string; dataR2?: string; // dataR2 em AAAA-MM-DD
   lead?: Lead; leadHash?: string;
@@ -40,35 +46,32 @@ export interface Caso {
   rascunho?: Rascunho;
   edicoes: Edicao[];
   decks: DeckVersao[];
+  /** Últimas mensagens da conversa (até MAX_HISTORICO). */
+  historico: MensagemHistorico[];
 }
 
-const g = globalThis as unknown as { __atlasCasos?: Map<string, Caso> };
-const casos = (g.__atlasCasos ??= new Map<string, Caso>());
-
-export function limparCasos() {
-  const agora = Date.now();
-  for (const [id, c] of casos) if (!c.ocupado && agora - c.atualizado > config.jobTtlMin * 60_000) casos.delete(id);
+/** Guarda uma mensagem no histórico do caso, mantendo só as últimas MAX_HISTORICO. Texto vazio não entra. */
+export function registrar(c: Caso, papel: MensagemHistorico["papel"], texto: string) {
+  if (!texto.trim()) return;
+  c.historico.push({ papel, texto, quando: Date.now() });
+  if (c.historico.length > MAX_HISTORICO) c.historico.splice(0, c.historico.length - MAX_HISTORICO);
 }
 
-/** Caso que não entra no armazenamento (usado por `rodar`, que não tem conversa). */
+/** Caso que não entra no armazenamento (usado por testes e por quem só precisa de um caso vazio). */
 export function casoAvulso(): Caso {
-  const id = crypto.randomBytes(16).toString("hex"); // 128 bits
+  return novoCaso(crypto.randomBytes(16).toString("hex")); // 128 bits
+}
+
+/** Caso vazio com o id da conversa. Não grava nada: o DO só guarda o caso depois da primeira tarefa. */
+export function novoCaso(id: string): Caso {
   const agora = Date.now();
-  return { id, criado: agora, atualizado: agora, ocupado: false, fontes: [], ativos: [], dataPosicao: "",
-    pendenciasCarteira: [], avisosLeitura: [], divergencias: [], edicoes: [], decks: [] };
+  return { id, criado: agora, atualizado: agora, fontes: [], ativos: [], dataPosicao: "",
+    pendenciasCarteira: [], avisosLeitura: [], divergencias: [], edicoes: [], decks: [], historico: [] };
 }
 
-export function novoCaso(): Caso {
-  limparCasos();
-  const c = casoAvulso();
-  casos.set(c.id, c);
-  return c;
-}
-
-export const obterCaso = (id: string) => (/^[0-9a-f]{32}$/.test(id) ? casos.get(id) : undefined);
 /** Cópia do estado para desfazer uma mensagem cancelada. */
 export const copiarCaso = (c: Caso): Caso => structuredClone(c);
-/** Devolve o caso ao estado da cópia, mantendo o mesmo objeto (ele está no mapa de casos). */
+/** Devolve o caso ao estado da cópia, mantendo o mesmo objeto. */
 export function restaurarCaso(c: Caso, copia: Caso) {
   for (const k of Object.keys(c)) if (!(k in copia)) delete (c as unknown as Record<string, unknown>)[k];
   Object.assign(c, copia);
@@ -153,9 +156,11 @@ export function publicoCaso(c: Caso) {
     lead: c.lead ? { nome: limparNome(c.lead.primeiro_nome), perfil: c.lead.perfil, objetivos: c.lead.objetivos, aporteMensal: c.lead.aporte_mensal, lacunas: c.lead.lacunas } : null,
     carteira: c.analise ? { total: c.analise.total, nAtivos: c.analise.n_ativos, pctClasse: c.analise.pct_classe } : null,
     avisos: c.avisosLeitura, pendencias: c.pendenciasCarteira,
-    avisosMetodo: dados.avisos, pendenciasMetodo: dados.pendencias,
+    avisosMetodo: dados.avisos.map((a) => a.texto), pendenciasMetodo: dados.pendencias,
     opcoes: valoresParaCarteira(c).length ? [{ id: "usar_transcricao" as const, rotulo: "Usar valores da transcrição" }] : [],
-    rascunhoPronto: !!c.rascunho, decks: c.decks, prontidao: prontidao(c), ocupado: c.ocupado,
+    rascunhoPronto: !!c.rascunho, decks: c.decks, prontidao: prontidao(c),
+    // Quem está ocupado é a conversa (tarefa ativa no DO), não o caso: quem monta a resposta sobrescreve com `tarefa`.
+    ocupado: false,
   };
 }
 export type CasoPublico = ReturnType<typeof publicoCaso>;
@@ -178,8 +183,67 @@ export function transcricaoJunta(c: Caso): { texto: string; aviso?: string } {
 }
 
 /** Avisos e pendências do método que dependem só dos dados lidos. Puro sobre o estado do caso. */
-export function avisosDosDados(c: Caso): { avisos: string[]; pendencias: string[] } {
+export function avisosDosDados(c: Caso): { avisos: Aviso[]; pendencias: string[] } {
   if (!c.lead || !c.analise) return { avisos: [], pendencias: [] };
   const [avisos, pendencias] = checarDados(c.lead, c.ativos, c.analise, transcricaoJunta(c).texto);
   return { avisos, pendencias };
+}
+
+// ---------------------------------------------------------------- persistência (Durable Object + R2)
+
+/** O caso como o DO o guarda: o mesmo JSON, sem o texto das fontes (que fica em R2). */
+export type CasoSalvo = Omit<Caso, "fontes"> & { fontes: Omit<Fonte, "texto">[] };
+
+export type ResultadoSalvarCaso =
+  | { ok: true; versao: number }
+  | { ok: false; motivo: "versao" | "tarefa" | "purgada"; versao: number };
+
+/** Fontes que vieram do DO (ou já foram gravadas nele): o texto delas está em R2, então não precisa subir de novo. */
+const noR2 = new WeakSet<Fonte>();
+
+const stubDe = (e: CloudflareEnv, conversaId: string) => e.CONVERSA.get(e.CONVERSA.idFromName(conversaId));
+
+/**
+ * O caso vigente da conversa e a versão (para `salvarCaso`). Numa conversa sem caso, devolve um caso vazio com o id dela.
+ * As fontes chegam com `texto` vazio: `hidratarFontes` busca o que a lógica for usar.
+ */
+export async function obterCaso(e: CloudflareEnv, conversaId: string): Promise<{ caso: Caso; versao: number }> {
+  const { caso: salvo, versao } = await stubDe(e, conversaId).obterCaso();
+  if (!salvo) return { caso: novoCaso(conversaId), versao };
+  const caso = salvo as Caso;
+  for (const f of caso.fontes) { f.texto = ""; noR2.add(f); }
+  return { caso, versao };
+}
+
+/**
+ * Lê do R2 o texto das fontes que vieram do DO: todas, as dos `papeis` pedidos ou as que o filtro aceitar. Falta de objeto lança:
+ * seguir com texto vazio refaria a leitura do lead em cima de nada. Fontes criadas nesta execução já têm o texto e são ignoradas.
+ */
+export async function hidratarFontes(
+  e: CloudflareEnv, usuarioId: string, conversaId: string, caso: Caso, selecao?: readonly PapelFonte[] | ((f: Fonte) => boolean),
+): Promise<void> {
+  const quer = (f: Fonte) => !selecao || (typeof selecao === "function" ? selecao(f) : selecao.includes(f.papel));
+  await Promise.all(caso.fontes.map(async (f) => {
+    if (!noR2.has(f) || f.texto || !quer(f)) return;
+    const o = await e.ARQUIVOS.get(chaveFonte(usuarioId, conversaId, f.hash));
+    if (!o) throw new Error(`Não encontrei o texto guardado de "${f.nome}". Envie o arquivo de novo.`);
+    f.texto = await o.text();
+  }));
+}
+
+/**
+ * Grava o caso no DO. Antes, sobe para o R2 o texto das fontes novas (se o DO recusar, ficam objetos soltos no prefixo da conversa,
+ * que a purga apaga; o contrário, um caso apontando para texto que não existe, não acontece). `opcoes` são as do DO: `versao` (controle
+ * otimista) e `tarefaId` (só grava enquanto a tarefa estiver ativa).
+ */
+export async function salvarCaso(
+  e: CloudflareEnv, usuarioId: string, conversaId: string, caso: Caso, opcoes: { versao?: number; tarefaId?: string } = {},
+): Promise<ResultadoSalvarCaso> {
+  const novas = caso.fontes.filter((f) => !noR2.has(f) && f.texto);
+  await Promise.all(novas.map((f) =>
+    e.ARQUIVOS.put(chaveFonte(usuarioId, conversaId, f.hash), f.texto, { httpMetadata: { contentType: "text/plain; charset=utf-8" } })));
+  const salvo: CasoSalvo = { ...caso, fontes: caso.fontes.map(({ texto: _texto, ...resto }) => (void _texto, resto)) };
+  const r = await stubDe(e, conversaId).salvarCaso(salvo, opcoes);
+  if (r.ok) for (const f of novas) noR2.add(f);
+  return r;
 }

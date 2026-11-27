@@ -1,9 +1,9 @@
 /**
  * Os schemas vêm de app/schemas.py (deck-service/export_schemas.py). Não reescreva à mão.
- * - schema completo: valida a resposta (Ajv)
+ * - schema completo: valida a resposta (validadores do Ajv gerados em build por scripts/gerar-validadores.mjs, sem new Function)
  * - schema reduzido: enviado ao Bedrock, sem restrições de tamanho que o structured output não aceita
  */
-import Ajv, { type ValidateFunction } from "ajv";
+import * as validadores from "./validadores.gerado";
 import AtivosOutS from "./schemas/AtivosOut.json";
 import LeadS from "./schemas/Lead.json";
 import AlocacaoS from "./schemas/Alocacao.json";
@@ -22,13 +22,9 @@ export const SCHEMAS: Record<SchemaName, Json> = {
   AtivosOut: AtivosOutS, Lead: LeadS, Alocacao: AlocacaoS, Diagnostico: DiagnosticoS, Decisao: DecisaoS, Notas: NotasS,
 };
 
-const ajv = new Ajv({ strict: false, allErrors: false });
-const validators = new Map<SchemaName, ValidateFunction>();
-
 /** Valida contra o schema completo. Devolve a lista de erros (vazia se válido). */
 export function validar(name: SchemaName, data: unknown): string[] {
-  let v = validators.get(name);
-  if (!v) { v = ajv.compile(SCHEMAS[name]); validators.set(name, v); }
+  const v = validadores[name];
   return v(data) ? [] : (v.errors ?? []).map((e) => `${e.instancePath || "/"} ${e.message}`);
 }
 

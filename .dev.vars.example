@@ -1,0 +1,40 @@
+# Variáveis locais do Worker (wrangler dev / Miniflare).
+# Copie para .dev.vars e preencha. O .dev.vars está no .gitignore: nunca o versione.
+# Em produção, segredos vão para `wrangler secret put NOME`.
+
+# Ambiente. "production" desliga o usuário de desenvolvimento e o cabeçalho x-atlas-dev-usuario.
+ENVIRONMENT=development
+
+# Usuário local (sem Cloudflare Access). Para testar outro assessor: cabeçalho x-atlas-dev-usuario.
+ATLAS_DEV_USUARIO=dev@eqi.local
+
+# Bedrock (só no servidor). Chave Bearer da conta. Nunca coloque valor real neste arquivo versionado.
+BEDROCK_API_KEY=
+# Alternativa à BEDROCK_API_KEY, lida pelo mesmo caminho.
+AWS_BEARER_TOKEN_BEDROCK=
+BEDROCK_REGION=us-east-1
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6
+# Endpoint alternativo (VPC endpoint, proxy ou mock de teste). Vazio = endpoint público da região.
+BEDROCK_ENDPOINT=
+# Tempo máximo de cada chamada ao modelo, em milissegundos.
+BEDROCK_TIMEOUT_MS=300000
+
+# Orçamento do medidor de contexto, em tokens. 0 = janela do modelo em lib/modelos.ts.
+ATLAS_CONTEXTO_TOKENS=0
+
+# Triagem de cada arquivo por LLM. 0 desliga e deixa só a contagem de sinais.
+ATLAS_TRIAGEM_LLM=1
+
+# Serviço Python que monta o deck (python-pptx + LibreOffice).
+DECK_SERVICE_URL=http://127.0.0.1:8180
+
+# Limite de cada anexo, em MB.
+MAX_UPLOAD_MB=25
+
+# Batimento da tarefa com o DO (ms) e tarefas simultâneas por isolate. Valores padrão abaixo; só mude para testes.
+# ATLAS_BATIMENTO_MS=5000
+# ATLAS_TAREFAS_POR_ISOLATE=3
+
+# Só no build (scripts/gerar-conhecimento.mjs e scripts/dev.mjs, lidos do ambiente do shell, não do Worker):
+# pasta com a base de conhecimento. Padrão ../conhecimento.
+# KNOWLEDGE_DIR=../conhecimento

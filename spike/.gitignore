@@ -1,0 +1,4 @@
+.fixtures/
+.wrangler/
+.dev.vars
+resultados/

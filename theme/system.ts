@@ -22,6 +22,16 @@ const config = defineConfig({
       colors: {
         "bg.canvas": { value: "{colors.neve}" },
         "fg.texto": { value: "{colors.floresta}" },
+        // Medidor de contexto (plano, seção 7.2). Só as cores da marca (10_padrao_visual_eqi.md proíbe amarelo e vermelho):
+        // a urgência sobe escurecendo o verde; alertas usam card Areia com "ATENÇÃO" e o crítico, card Floresta com texto Neve.
+        "contexto.trilha": { value: "{colors.nevoa}" },
+        "contexto.ok": { value: "{colors.menta}" },
+        "contexto.atencao": { value: "{colors.eqi}" },
+        "contexto.alerta": { value: "{colors.profundo}" },
+        "contexto.critico": { value: "{colors.floresta}" },
+        "contexto.alerta.bg": { value: "{colors.areia}" },
+        "contexto.critico.bg": { value: "{colors.floresta}" },
+        "contexto.critico.fg": { value: "{colors.neve}" },
       },
     },
   },

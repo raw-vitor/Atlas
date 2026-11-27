@@ -3,16 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "gerar": "node scripts/gerar-validadores.mjs && node scripts/gerar-conhecimento.mjs",
+    "predev": "npm run gerar",
+    "predev:next": "npm run gerar",
+    "prebuild": "npm run gerar",
+    "pretest": "npm run gerar",
+    "prepreview": "npm run gerar",
+    "pretypecheck": "npm run gerar",
+    "typecheck": "tsc --noEmit",
     "dev": "node scripts/dev.mjs",
     "dev:next": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf-typegen": "wrangler types cloudflare-env.d.ts --env-interface CloudflareEnv --strict-vars false --env-file .dev.vars.example",
+    "db:migrate:local": "wrangler d1 migrations apply atlas-db --local",
+    "test:workers": "vitest run --config vitest.workers.config.mts"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1178.0",
     "@chakra-ui/react": "^3.38.0",
+    "@cloudflare/containers": "^0.3.7",
     "@emotion/react": "^11.14.0",
     "ajv": "^8.20.0",
     "jszip": "^3.10.2",
@@ -26,6 +38,8 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261127.1",
+    "@opennextjs/cloudflare": "^1.20.19",
     "@types/node": "^22.20.7",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -34,6 +48,7 @@
     "eslint-config-next": "16.4.6",
     "tsx": "^4.23.15",
     "typescript": "^5",
-    "vitest": "^5.1.2"
+    "vitest": "^5.1.2",
+    "wrangler": "^4.168.0"
   }
 }
