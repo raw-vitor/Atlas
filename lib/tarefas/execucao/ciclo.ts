@@ -19,7 +19,7 @@ import { gravarMensagem } from "../../db/mensagens";
 import type { ContextoTarefa } from "../contexto";
 import type { MensagemTarefa, ResultadoComecar, StatusFinal } from "../tipos";
 import type { ResultadoTerminar } from "../../../workers/conversa";
-import { ErroDeTarefa, mensagemDeErro } from "./erros";
+import { classeDoErro, ErroDeTarefa, mensagemDeErro } from "./erros";
 import { semaforoDoIsolate } from "./limite";
 
 /**
@@ -140,7 +140,7 @@ export async function executarTarefa<P>(msg: MensagemDeTarefa, c: ContextoTarefa
         return;
       }
       // Erro da tarefa. O log leva só a classe do erro: a mensagem pode citar nome de arquivo e trechos do lead.
-      console.error("[tarefa] falhou", { ...base, tentativa: c.tentativa, erro: erro instanceof Error ? erro.name : "desconhecido" });
+      console.error("[tarefa] falhou", { ...base, tentativa: c.tentativa, erro: classeDoErro(erro) });
       const mensagem = mensagemDeErro(erro);
       try {
         const salva = await gravarMensagem(e, { conversaId: msg.conversaId, tipo: "atlas", texto: mensagem, meta: { erro: true }, idCliente: `erro:${msg.tarefaId}` });

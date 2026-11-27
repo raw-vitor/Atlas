@@ -59,9 +59,9 @@
 			"instance_type": { "vcpu": 0.5, "memory_mib": 2048, "disk_mb": 4000 }
 		},
 		{
-			// Mesma imagem do docker-compose: o contexto de build é o diretório pai de atlas/ (COPY deck-service ..., COPY app/...).
+			// Imagem do deck-service (cópia de ../deck-service/Dockerfile com calc.py e config.py): o contexto de build é o diretório pai de atlas/.
 			"class_name": "DeckService",
-			"image": "../deck-service/Dockerfile",
+			"image": "./containers/deck/Dockerfile",
 			"image_build_context": "..",
 			"max_instances": 2,
 			"instance_type": "standard-1"

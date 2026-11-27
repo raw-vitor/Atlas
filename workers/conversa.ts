@@ -229,6 +229,8 @@ export class Conversa extends DurableObject<CloudflareEnv> {
       this.sql.exec("DELETE FROM tarefa WHERE id <> ?", manter);
       this.sql.exec("DELETE FROM caso WHERE slot = 'antes'");
       this.sql.exec("INSERT INTO caso (slot, parte, json) SELECT 'antes', parte, json FROM caso WHERE slot = 'atual'");
+      // O medidor também volta ao que era se a tarefa for cancelada: a estimativa publicada no começo do turno não vale sem ele.
+      this.gravarMeta("contexto_antes", this.meta("contexto") ?? "null");
       this.sql.exec(
         "INSERT INTO tarefa (id, tipo, status, payload, iniciada, atualizada, tem_snapshot) VALUES (?, ?, 'na_fila', ?, ?, ?, 1)",
         id, tipo, serial, agora, agora,
@@ -331,6 +333,8 @@ export class Conversa extends DurableObject<CloudflareEnv> {
     const antes = this.sql.exec("SELECT 1 FROM caso WHERE slot = 'antes' LIMIT 1").toArray();
     this.sql.exec("DELETE FROM caso WHERE slot = 'atual'");
     if (antes.length) this.sql.exec("INSERT INTO caso (slot, parte, json) SELECT 'atual', parte, json FROM caso WHERE slot = 'antes'");
+    const ctxAntes = this.meta("contexto_antes");
+    if (ctxAntes !== null) this.gravarMeta("contexto", ctxAntes);
     this.gravarMeta("caso_versao", String(Number(this.meta("caso_versao") ?? 0) + 1));
   }
 

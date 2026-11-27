@@ -151,7 +151,9 @@ export async function rodarTurno(entrada: EntradaTurno): Promise<{ texto: string
     const base = it.pergunta && !caso.fontes.length ? it.pergunta
       : naoEntendi ? NAO_ENTENDI + (pr.pronto ? "" : `\nPara gerar os slides ainda falta: ${pr.faltas.join("; ")}.`)
       : resumoDoCaso(caso, [], avisosTriagem);
-    enviar("texto", { texto: base + (ignorados.length ? `\nNão usei: ${ignorados.join("; ")}.` : "") });
+    // `it.pergunta` (lib/chat.ts) já cita os ignorados; repetir a linha duplicaria a frase.
+    const citaIgnorados = base === it.pergunta;
+    enviar("texto", { texto: base + (ignorados.length && !citaIgnorados ? `\nNão usei: ${ignorados.join("; ")}.` : "") });
     enviar("caso", publicoCaso(caso));
     return { texto: resposta };
   }

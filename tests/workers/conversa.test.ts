@@ -131,6 +131,31 @@ describe("cancelamento", () => {
     expect((await iniciar(id)).ok).toBe(true);
   });
 
+  it("o medidor volta ao valor de antes da tarefa cancelada (e a uma conversa sem medição, a nenhuma)", async () => {
+    const ctx = (tokens: number, estimado: boolean) => ({ tokens, limite: 1000, pct: tokens / 10, estimado, partes: {} });
+    const estado = async (id: string) => (await t.rpc<{ contexto: unknown }>(id, "estado")).contexto;
+    const id = novoId();
+    await t.rpc(id, "publicar", "contexto", ctx(100, false));
+    const a = await iniciar(id);
+    await t.rpc(id, "comecarTarefa", a.tarefa.id, 1);
+    await t.rpc(id, "publicar", "contexto", ctx(700, true), a.tarefa.id); // estimativa do começo do turno
+    expect(await estado(id)).toMatchObject({ tokens: 700, estimado: true });
+    await t.rpc(id, "terminarTarefa", "cancelada", { tarefaId: a.tarefa.id });
+    expect(await estado(id)).toMatchObject({ tokens: 100, estimado: false });
+
+    const vazia = novoId();
+    const b = await iniciar(vazia);
+    await t.rpc(vazia, "publicar", "contexto", ctx(50, true), b.tarefa.id);
+    await t.rpc(vazia, "cancelar");
+    expect(await estado(vazia)).toBeNull();
+
+    // concluída mantém o valor novo
+    const c = await iniciar(id);
+    await t.rpc(id, "publicar", "contexto", ctx(300, false), c.tarefa.id);
+    await t.rpc(id, "terminarTarefa", "concluida", { tarefaId: c.tarefa.id });
+    expect(await estado(id)).toMatchObject({ tokens: 300 });
+  });
+
   it("cancelar logo depois de a tarefa começar e a retentativa da fila não revivem uma tarefa cancelada", async () => {
     const id = novoId();
     const { tarefa } = await iniciar(id);

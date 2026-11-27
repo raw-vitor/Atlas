@@ -31,7 +31,10 @@ DECK_SERVICE_URL=http://127.0.0.1:8180
 # Limite de cada anexo, em MB.
 MAX_UPLOAD_MB=25
 
-# Ainda lidas pelo código atual (Node). Saem na fase 1 do plano.
+# Batimento da tarefa com o DO (ms) e tarefas simultâneas por isolate. Valores padrão abaixo; só mude para testes.
+# ATLAS_BATIMENTO_MS=5000
+# ATLAS_TAREFAS_POR_ISOLATE=3
+
+# Só no build (scripts/gerar-conhecimento.mjs e scripts/dev.mjs, lidos do ambiente do shell, não do Worker):
+# pasta com a base de conhecimento. Padrão ../conhecimento.
 # KNOWLEDGE_DIR=../conhecimento
-# WORK_DIR=/tmp/atlas_jobs
-# JOB_TTL_MIN=60

@@ -17,3 +17,17 @@ export function mensagemDeErro(e: unknown): string {
   if (e instanceof Error && e.constructor === Error && e.message.trim()) return e.message.slice(0, 300);
   return MSG_ERRO_GENERICO;
 }
+
+/**
+ * O que vai para o log no lugar da mensagem (que pode citar arquivo e trechos do lead): a classe do erro e, quando o Bedrock respondeu
+ * com erro, só o código HTTP (429 = cota, 400 = entrada grande, 5xx = indisponível). `LLMError` não define `name`, então sem isto
+ * todo erro do modelo aparecia no log como "Error".
+ */
+export function classeDoErro(e: unknown): string {
+  if (!(e instanceof Error)) return "desconhecido";
+  if (e instanceof LLMError) {
+    const http = /Bedrock HTTP (\d{3})/.exec(e.message);
+    return http ? `LLMError HTTP ${http[1]}` : "LLMError";
+  }
+  return e.name;
+}

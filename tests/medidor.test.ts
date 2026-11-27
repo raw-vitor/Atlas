@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { casoAvulso, hashTexto, type Caso } from "../lib/caso";
 import { LLMError } from "../lib/bedrock";
-import { ErroDeTarefa, MSG_ERRO_GENERICO, MSG_ERRO_MODELO, mensagemDeErro } from "../lib/tarefas/execucao/erros";
+import { classeDoErro, ErroDeTarefa, MSG_ERRO_GENERICO, MSG_ERRO_MODELO, mensagemDeErro } from "../lib/tarefas/execucao/erros";
 import { CHARS_POR_TOKEN, caracteresDoPrompt, medirContexto, repartir } from "../lib/tarefas/execucao/medidor";
 import { validarPayloadTurno } from "../lib/tarefas/turno";
 import { validarPayloadDeck } from "../lib/tarefas/deck";
@@ -67,6 +67,16 @@ describe("repartir", () => {
   it("sem tokens ou sem caracteres devolve zeros", () => {
     expect(repartir(0, { transcricao: 5, carteira: 0, historico: 0, outros: 0 })).toEqual({ transcricao: 0, carteira: 0, historico: 0, outros: 0 });
     expect(repartir(10, { transcricao: 0, carteira: 0, historico: 0, outros: 0 })).toEqual({ transcricao: 0, carteira: 0, historico: 0, outros: 0 });
+  });
+});
+
+describe("classe do erro para o log", () => {
+  it("diz o código HTTP do Bedrock sem repetir a mensagem (que pode citar o lead)", () => {
+    const erro = new LLMError("Falha ao obter JSON válido do modelo: Error: Bedrock HTTP 429: {\"message\":\"trecho do lead\"}");
+    expect(classeDoErro(erro)).toBe("LLMError HTTP 429");
+    expect(classeDoErro(new LLMError("Chave do Bedrock ausente"))).toBe("LLMError");
+    expect(classeDoErro(new TypeError("x"))).toBe("TypeError");
+    expect(classeDoErro("solto")).toBe("desconhecido");
   });
 });
 

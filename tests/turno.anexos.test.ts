@@ -94,6 +94,13 @@ describe("turno com anexos", () => {
     const t = await turno(casoAvulso(), "", [transcricao, { nome: "vazio.txt", buf: Buffer.from("oi") }]);
     expect(t.texto).toContain("Não usei: vazio.txt (Não consegui extrair texto de vazio.txt");
   });
+
+  it("só arquivo ilegível numa conversa vazia: a pergunta cita 'Não usei' uma única vez", async () => {
+    perguntar.mockResolvedValue({ classificacoes: [] });
+    const t = await turno(casoAvulso(), "", [{ nome: "vazio.txt", buf: Buffer.from("oi") }]);
+    expect(t.texto).toContain("Falta a carteira e a transcrição da R1.");
+    expect(t.texto?.match(/Não usei:/g)).toHaveLength(1);
+  });
 });
 
 describe("turno: instruções", () => {
