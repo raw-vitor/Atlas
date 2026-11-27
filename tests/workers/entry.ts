@@ -20,6 +20,7 @@ import { putAnexo } from "../../lib/rotas/anexos";
 import { postAcoes } from "../../lib/rotas/acoes";
 import { getEventos, postCancelar } from "../../lib/rotas/controle";
 import { deleteConversa, getConversa, getConversas, patchConversa, postConversas } from "../../lib/rotas/conversas";
+import { deleteConfigPrompt, getConfigPrompt, putConfigPrompt } from "../../lib/rotas/configPrompt";
 import { getDeck } from "../../lib/rotas/decks";
 import { getMensagens, postMensagens } from "../../lib/rotas/mensagens";
 
@@ -67,6 +68,9 @@ type Manipulador = (req: Request, e: CloudflareEnv, p: string[]) => Promise<Resp
 
 /** Mesma tabela de métodos e caminhos de app/api/**. */
 const ROTAS: { metodo: string; padrao: RegExp; fn: Manipulador }[] = [
+  { metodo: "GET", padrao: /^\/api\/configuracoes\/prompt$/, fn: (r, e) => getConfigPrompt(r, e) },
+  { metodo: "PUT", padrao: /^\/api\/configuracoes\/prompt$/, fn: (r, e) => putConfigPrompt(r, e) },
+  { metodo: "DELETE", padrao: /^\/api\/configuracoes\/prompt$/, fn: (r, e) => deleteConfigPrompt(r, e) },
   { metodo: "GET", padrao: /^\/api\/conversas$/, fn: (r, e) => getConversas(r, e) },
   { metodo: "POST", padrao: /^\/api\/conversas$/, fn: (r, e) => postConversas(r, e) },
   { metodo: "GET", padrao: /^\/api\/conversas\/([^/]+)$/, fn: (r, e, p) => getConversa(r, p[0], e) },

@@ -15,6 +15,7 @@ import type { PayloadTurno } from "../db/tipos";
 import { limiteContexto } from "../modelos";
 import type { ContextoTarefa } from "./contexto";
 import { executarTarefa, type Tarefa } from "./execucao/ciclo";
+import { configDaTarefa } from "./execucao/config";
 import { ErroDeTarefa } from "./execucao/erros";
 import { baixarAnexos, criarLeitor } from "./execucao/extracao";
 import { rodarTurno } from "./execucao/logica-turno";
@@ -43,12 +44,14 @@ async function corpoTurno(t: Tarefa<PayloadTurno>): Promise<void> {
   await hidratarFontes(e, usuarioId, conversaId, caso, (f) => f.papel !== "carteira" || !f.ativos);
   const limite = limiteContexto();
   const uso = novoUso();
+  // Snapshot: uma consulta por chave primária; o turno inteiro usa esta config, mesmo que o assessor salve outra no meio.
+  const config = await configDaTarefa(e, usuarioId, "turno");
 
   // Antes de qualquer chamada ao modelo o medidor só tem a estimativa.
   t.emitir("contexto", medirContexto(caso, 0, limite));
   const arquivos = await baixarAnexos(e, usuarioId, conversaId, t.payload.anexos);
   const { texto: resposta } = await rodarTurno({
-    caso, texto: t.payload.texto, arquivos, uso, leitor: criarLeitor(e), enviar: (evento, dados) => t.emitir(evento, dados),
+    caso, texto: t.payload.texto, arquivos, uso, config, leitor: criarLeitor(e), enviar: (evento, dados) => t.emitir(evento, dados),
   });
   await t.drenar();
   checarCancelado();

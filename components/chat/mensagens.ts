@@ -9,7 +9,7 @@ export function conversaVazia(id: string, titulo = "Nova conversa"): ConversaUI 
   return {
     id, titulo, mensagens: [], maisAntigas: false, carga: "ok", anteriores: "ocioso",
     caso: null, tarefa: null, fila: null, atividade: null, progresso: null, parcial: null,
-    contexto: null, alertasVistos: [], enviando: false, turnoMsgId: null,
+    contexto: null, alertasVistos: [], configAtual: null, enviando: false, turnoMsgId: null,
   };
 }
 

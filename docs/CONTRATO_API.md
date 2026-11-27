@@ -41,7 +41,7 @@ Erros sempre `{ erro: string }` com mensagem em português pronta para a tela.
 |---|---|---|
 | `GET /api/conversas?cursor=` | | `{ itens: ConversaResumo[], cursor: string \| null }` (30 por página, `atualizada` desc) |
 | `POST /api/conversas` | `{ titulo? }` (corpo opcional) | `201 { conversa: ConversaResumo, caso: CasoPublico }` |
-| `GET /api/conversas/{id}` | | `{ conversa: ConversaResumo, caso: CasoPublico, tarefa: TarefaPublica \| null, contexto: Contexto \| null, alertasVistos: Faixa[] }` |
+| `GET /api/conversas/{id}` | | `{ conversa: ConversaResumo, caso: CasoPublico, tarefa: TarefaPublica \| null, contexto: Contexto \| null, alertasVistos: Faixa[], configAtual: number }` |
 | `PATCH /api/conversas/{id}` | `{ titulo?, alertaVisto?: Faixa }` | `{ conversa: ConversaResumo }` |
 | `DELETE /api/conversas/{id}` | | `204`. Some da lista na hora; purga assíncrona |
 | `GET /api/conversas/{id}/mensagens?antes={seq}&limite=50` | | `{ itens: MensagemSalva[], maisAntigas: boolean }` (ordem crescente de `seq`) |
@@ -74,6 +74,7 @@ Notas das rotas (fase 2, `lib/rotas/*`):
 
 - `409` de mensagem e de ação traz também `tarefa` (a que está ativa): `{ erro, tarefa }`. `422` de `acoes` traz `faltas`.
 - `GET /api/conversas/{id}`: `tarefa` é a ativa ou, se não houver, a última encerrada (`status` diz qual). `caso.ocupado` é derivado dela. O texto das fontes nunca vai ao navegador; as transcrições são relidas do R2 só para calcular avisos e opções.
+- `GET /api/conversas/{id}`: `configAtual` é a versão atual da config de prompt do usuário autenticado (`config_prompt.versao`, 0 se nunca salvou). `caso.configVersoes` (`{ lead?: number, rascunho?: number }`, sempre um objeto, vazio em caso sem lead nem rascunho ou salvo antes do recurso) traz a versão usada ao ler o lead e ao gerar o rascunho. O navegador mostra o alerta "versão anterior das suas instruções" quando alguma delas difere de `configAtual`, e reavalia a cada evento `caso` do SSE. `POST /api/conversas` não devolve `configAtual` (conversa nova não tem lead nem rascunho).
 - `PATCH`: renomear **não** muda `atualizada` (não reordena a lista). `alertaVisto` fora de 60, 85 e 95 é 400.
 - `POST /mensagens` reenviado com o mesmo `idCliente` devolve `202` com a mensagem já gravada e a tarefa atual (sem gravar nem travar de novo; se a tarefa ainda está `na_fila`, reenfileira a mesma mensagem, o que o consumidor já descarta por `comecarTarefa`).
 - Limite de texto da mensagem: 300 mil caracteres (`413`). `idCliente`: `[A-Za-z0-9._-]{1,64}`. Até `MAX_ARQUIVOS` anexos e `MAX_LOTE_MB` no total.

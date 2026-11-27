@@ -8,6 +8,7 @@ import { chaveFonte } from "./r2";
 import { valoresCitados } from "./citados";
 import { checarDados } from "./validate";
 import { eSubstituivelPorExtrato } from "./triagem-llm";
+import type { ConfigVersoes } from "./prompt-tipos";
 import type { Alocacao, Analise, Ativo, Aviso, Decisao, Diagnostico, Lead, Notas } from "./types";
 
 /** "contexto": deck anterior, anotações e afins. Não é posição nem fala do lead; só ajuda a ler o lead. */
@@ -44,10 +45,21 @@ export interface Caso {
   analise?: Analise;
   divergencias: never[]; // fase 3
   rascunho?: Rascunho;
+  /**
+   * Versão da config de prompt do assessor usada em cada etapa com LLM: `lead` quando o lead foi
+   * extraído da transcrição, `rascunho` quando o rascunho foi gerado. Ausente em casos salvos antes do recurso e em etapas que ainda não rodaram.
+   */
+  configVersoes?: ConfigVersoes;
   edicoes: Edicao[];
   decks: DeckVersao[];
   /** Últimas mensagens da conversa (até MAX_HISTORICO). */
   historico: MensagemHistorico[];
+}
+
+/** Descarta o rascunho (ele depende do lead, da carteira e da data) e a versão de config com que foi gerado. */
+export function descartarRascunho(c: Caso) {
+  c.rascunho = undefined;
+  if (c.configVersoes) { delete c.configVersoes.rascunho; if (!Object.keys(c.configVersoes).length) delete c.configVersoes; }
 }
 
 /** Guarda uma mensagem no histórico do caso, mantendo só as últimas MAX_HISTORICO. Texto vazio não entra. */
@@ -159,6 +171,8 @@ export function publicoCaso(c: Caso) {
     avisosMetodo: dados.avisos.map((a) => a.texto), pendenciasMetodo: dados.pendencias,
     opcoes: valoresParaCarteira(c).length ? [{ id: "usar_transcricao" as const, rotulo: "Usar valores da transcrição" }] : [],
     rascunhoPronto: !!c.rascunho, decks: c.decks, prontidao: prontidao(c),
+    // Versões da config de prompt usadas no lead e no rascunho; o navegador compara com `configAtual`. Sempre um objeto.
+    configVersoes: { ...c.configVersoes },
     // Quem está ocupado é a conversa (tarefa ativa no DO), não o caso: quem monta a resposta sobrescreve com `tarefa`.
     ocupado: false,
   };

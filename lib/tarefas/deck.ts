@@ -17,6 +17,7 @@ import { deck, rascunho, type Progress, type Resultado } from "../pipeline";
 import { chaveDeck } from "../r2";
 import type { ContextoTarefa } from "./contexto";
 import { executarTarefa, type Tarefa } from "./execucao/ciclo";
+import { configDaTarefa } from "./execucao/config";
 import { ErroDeTarefa } from "./execucao/erros";
 import { medirContexto } from "./execucao/medidor";
 import type { MensagemTarefa } from "./tipos";
@@ -52,7 +53,9 @@ async function corpoDeck(t: Tarefa<PayloadDeck>): Promise<void> {
     // O deck-service é conferido antes de gastar chamadas ao LLM.
     const saude = await deckSaude(e);
     if (!saude.ok) throw new ErroDeTarefa(`O serviço que monta o deck não está pronto (${saude.erro}). Avise o time e tente de novo.`);
-    await rascunho(caso, criarChatJson(uso), p, 5, 85);
+    // Só quem vai chamar o LLM lê a config (uma consulta por chave primária). Snapshot: vale até o fim da tarefa.
+    const config = await configDaTarefa(e, usuarioId, "deck");
+    await rascunho(caso, criarChatJson(uso), p, 5, 85, config);
   }
   const gerado = await deck(caso, [...FORMATOS], uso, p, 88, e);
   await t.drenar();

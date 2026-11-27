@@ -6,12 +6,13 @@
  */
 import { criarChatJson, type Uso } from "../../bedrock";
 import { CanceladoError, checarCancelado } from "../../cancelamento";
-import { aplicarAjustes, eDerivada, hashTexto, prontidao, publicoCaso, rebaixarCarteirasSubstituiveis, registrar, removerDerivada,
+import { aplicarAjustes, descartarRascunho, eDerivada, hashTexto, prontidao, publicoCaso, rebaixarCarteirasSubstituiveis, registrar, removerDerivada,
   temCarteiraReal, temExtrato, tocar, valoresParaCarteira, type Caso, type Fonte } from "../../caso";
 import { interpretar, type LeitorDeArquivo } from "../../chat";
 import { responderPergunta } from "../../conversa";
 import { interpretarInstrucao, MAX_INSTRUCAO } from "../../instrucao";
 import { derivarCarteira, leitura } from "../../pipeline";
+import type { ConfigPrompt } from "../../prompt-tipos";
 import { resumoDoCaso } from "../../resumo";
 import { eSubstituivelPorExtrato as eSubstituivel } from "../../triagem-llm";
 import { ErroDeTarefa } from "./erros";
@@ -30,16 +31,18 @@ export interface EntradaTurno {
   enviar: EnviarTurno;
   /** Converte arquivo em texto. Padrão: `toText` (tudo em processo). O consumidor passa o leitor que usa o Container. */
   leitor?: LeitorDeArquivo;
+  /** Config de prompt do assessor (snapshot da tarefa). Sem ela, vale o prompt original. */
+  config?: ConfigPrompt;
 }
 
 /** Monta a carteira com os valores que o lead citou na R1. Devolve a frase com o resultado. */
-async function usarTranscricao(caso: Caso, uso: Uso, enviar: EnviarTurno): Promise<string> {
+async function usarTranscricao(caso: Caso, uso: Uso, enviar: EnviarTurno, config?: ConfigPrompt): Promise<string> {
   if (!caso.fontes.some((f) => f.papel === "transcricao")) return "Ainda não recebi a transcrição da R1. Anexe o arquivo ou cole o texto aqui.";
   if (temCarteiraReal(caso)) return "A carteira enviada já está em uso. Não preciso dos valores da transcrição.";
   const SEM_VALOR = "Não achei valores investidos na fala do lead. Preciso da carteira: anexe o extrato ou cole a posição aqui.";
   if (!valoresParaCarteira(caso).length && !caso.fontes.some(eDerivada)) return SEM_VALOR;
   enviar("atividade", { pct: 5, msg: "Lendo os valores citados na R1" });
-  const ativos = await derivarCarteira(caso, criarChatJson(uso), (_etapa, pct, m) => enviar("atividade", { pct, msg: m }));
+  const ativos = await derivarCarteira(caso, criarChatJson(uso), (_etapa, pct, m) => enviar("atividade", { pct, msg: m }), config);
   if (!ativos.length) return SEM_VALOR;
   const lista = ativos.map((a) => `${a.nome}, ${a.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`).join("; ");
   return `Montei a carteira com o que o lead disse na R1: ${lista} (aproximado). Confirme o extrato antes da R2.`;
@@ -53,7 +56,7 @@ const NAO_ENTENDI = "Não entendi o pedido. Posso gerar os slides, anotar nome, 
  * (o chamador restaura o caso) e `ErroDeTarefa` para falhas com mensagem pronta; qualquer outro erro sobe como está.
  */
 export async function rodarTurno(entrada: EntradaTurno): Promise<{ texto: string }> {
-  const { caso, texto: msg, arquivos, uso, leitor } = entrada;
+  const { caso, texto: msg, arquivos, uso, leitor, config } = entrada;
   let resposta = "";
   // Histórico no servidor: a mensagem do assessor e todo texto que o Atlas responde.
   registrar(caso, "assessor", [msg.trim(), arquivos.length ? `(anexou: ${arquivos.map((f) => f.nome).join(", ")})` : ""].filter(Boolean).join(" "));
@@ -81,13 +84,13 @@ export async function rodarTurno(entrada: EntradaTurno): Promise<{ texto: string
           for (const campo of ["primeiro_nome", "perfil", "objetivos"] as const)
             if (JSON.stringify(antes[campo]) !== JSON.stringify(caso.lead[campo]))
               caso.edicoes.push({ quando: Date.now(), campo: `lead.${campo}`, antes: antes[campo], depois: caso.lead[campo], origem: "assessor" });
-          caso.rascunho = undefined; // o rascunho depende do lead
+          descartarRascunho(caso); // o rascunho depende do lead
           const dados = [ins.ajustes.primeiro_nome && `nome ${ins.ajustes.primeiro_nome}`, ins.ajustes.perfil && `perfil ${ins.ajustes.perfil}`,
             ins.ajustes.objetivos?.length && `objetivo${ins.ajustes.objetivos.length > 1 ? "s" : ""}: ${ins.ajustes.objetivos.join("; ")}`].filter(Boolean);
           partes.push(`Anotei no lead: ${dados.join(", ")}.`);
         }
       }
-      if (ins.usarTranscricao) partes.push(await usarTranscricao(caso, uso, enviar));
+      if (ins.usarTranscricao) partes.push(await usarTranscricao(caso, uso, enviar, config));
       tocar(caso);
       enviar("texto", { texto: [...partes, resumoDoCaso(caso, [])].join("\n") });
       enviar("caso", publicoCaso(caso));
@@ -115,7 +118,7 @@ export async function rodarTurno(entrada: EntradaTurno): Promise<{ texto: string
   if (it.assessorInformado) caso.assessor = it.assessor;
   if (it.dataInformada) {
     const nova = it.dataR2.toISOString().slice(0, 10);
-    if (nova !== caso.dataR2) caso.rascunho = undefined; // a data entra no texto do rascunho
+    if (nova !== caso.dataR2) descartarRascunho(caso); // a data entra no texto do rascunho
     caso.dataR2 = nova;
   }
 
@@ -159,7 +162,7 @@ export async function rodarTurno(entrada: EntradaTurno): Promise<{ texto: string
   }
 
   enviar("atividade", { pct: 5, msg: "Lendo os arquivos" });
-  await leitura(caso, criarChatJson(uso), (_etapa, pct, m) => enviar("atividade", { pct, msg: m }));
+  await leitura(caso, criarChatJson(uso), (_etapa, pct, m) => enviar("atividade", { pct, msg: m }), config);
   tocar(caso);
   const resumo = resumoDoCaso(caso, novos.map((f) => f.nome), avisosTriagem);
   enviar("texto", { texto: resumo + nota + (ignorados.length ? `\nNão usei: ${ignorados.join("; ")}.` : "") });

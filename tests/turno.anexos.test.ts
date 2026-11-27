@@ -123,11 +123,13 @@ describe("turno: instruções", () => {
     const caso = casoAvulso();
     await turno(caso, "", [carteira, transcricao]);
     caso.rascunho = {} as never;
+    caso.configVersoes = { lead: 2, rascunho: 2 };
     perguntar.mockResolvedValue({ usar_transcricao: false, primeiro_nome: "", perfil: "Arrojado", objetivos: [], pergunta: false });
     const t = await turno(caso, "ele é arrojado");
     expect(t.texto).toContain("Anotei no lead: perfil Arrojado.");
     expect(caso.lead?.perfil).toBe("Arrojado");
     expect(caso.rascunho).toBeUndefined();
+    expect(caso.configVersoes).toEqual({ lead: 2 }); // a versão do rascunho descartado some; a do lead (extração com LLM) fica
     expect(caso.edicoes.map((e) => e.campo)).toEqual(["lead.perfil"]);
   });
 

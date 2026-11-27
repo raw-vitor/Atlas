@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import JSZip from "jszip";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { gravarConfigPrompt } from "../../lib/db/configPrompt";
 import { listarMensagens } from "../../lib/db/mensagens";
 import type { Anexo, Contexto, MensagemSalva } from "../../lib/db/tipos";
 import { limiteContexto } from "../../lib/modelos";
@@ -486,6 +487,114 @@ describe("deck", () => {
     expect(await t.lote(msg, 2)).toEqual({ ack: true, retry: null });
     expect((await casoSalvo(c))!.decks).toHaveLength(1);
     expect(mock.chamadas).toHaveLength(0);
+  });
+});
+
+// ------------------------------------------------------------------ configuração de prompt do assessor
+
+describe("configuração de prompt por assessor (turno e deck)", () => {
+  const EXTRA_A = "INSTRUCAO-PROPRIA-DA-ANA-7F3A";
+  const EXTRA_A2 = "INSTRUCAO-DEPOIS-DE-SALVAR-9C1B";
+  const bloco = (texto: string) => ({ id: "x_aaaaaaaaaaaa", categoria: "geral" as const, titulo: "Meu bloco", texto, ativo: true, ordem: 0 });
+  /** Grava como a rota PUT faz: a versão esperada é a atual. Devolve a nova. */
+  const salvarConfig = async (usuarioId: string, versaoAtual: number, texto: string) => {
+    const v = await gravarConfigPrompt(env, usuarioId, versaoAtual, { alterados: {}, extras: [bloco(texto)] });
+    expect(v).toBe(versaoAtual + 1);
+    return v!;
+  };
+  const versoes = async (c: Conv) => (await casoSalvo(c))!.configVersoes;
+  const systems = () => mock.chamadas.map((x) => x.system);
+
+  it("o extra de A entra no system do lead e do rascunho de A e em nenhum de B; o caso grava a versão usada", async () => {
+    const a = await novaConversa("cfg.ana@eqi.local");
+    const b = await novaConversa("cfg.bia@eqi.local");
+    await salvarConfig(a.usuarioId, await salvarConfig(a.usuarioId, 0, "rascunho antigo"), EXTRA_A); // versão 2
+
+    // Leitura do lead (turno): A leva o extra, B não.
+    await conversaComCaso("segue o material, assessor Luiz", a);
+    expect(mock.chamadas.map((x) => x.schema).sort()).toEqual(["AtivosOut", "Lead"]);
+    expect(systems().every((s) => s.includes(EXTRA_A))).toBe(true);
+    expect(await versoes(a)).toEqual({ lead: 2 });
+    mock.zerar();
+    await conversaComCaso("segue o material, assessor Luiz", b);
+    expect(systems().some((s) => s.includes(EXTRA_A))).toBe(false);
+    expect(await versoes(b)).toEqual({ lead: 0 });
+
+    // Rascunho (deck): as quatro chamadas de A levam o extra, as de B não.
+    mock.zerar();
+    expect(await t.lote(await pedirDeck(a))).toEqual({ ack: true, retry: null });
+    expect(mock.chamadas.map((x) => x.schema)).toEqual(["Alocacao", "Diagnostico", "Decisao", "Notas"]);
+    expect(systems().every((s) => s.includes(EXTRA_A))).toBe(true);
+    mock.zerar();
+    expect(await t.lote(await pedirDeck(b))).toEqual({ ack: true, retry: null });
+    expect(mock.chamadas).toHaveLength(4);
+    expect(systems().some((s) => s.includes(EXTRA_A))).toBe(false);
+
+    expect(await versoes(a)).toEqual({ lead: 2, rascunho: 2 });
+    expect(await versoes(b)).toEqual({ lead: 0, rascunho: 0 });
+    const eventoCaso = doTipo(await t.eventos(a.id), "caso").slice(-1)[0];
+    expect(eventoCaso).toMatchObject({ rascunhoPronto: true, configVersoes: { lead: 2, rascunho: 2 } });
+  });
+
+  it("snapshot: salvar a config no meio do deck não muda o que a tarefa em andamento usa nem a versão gravada", async () => {
+    const a = await novaConversa("cfg.snap@eqi.local");
+    const v1 = await salvarConfig(a.usuarioId, 0, EXTRA_A);
+    await conversaComCaso("segue o material, assessor Luiz", a);
+    mock.zerar();
+    mock.atrasoMs = 150;
+    const lote = t.lote(await pedirDeck(a));
+    await ate(async () => mock.chamadas.length, (n) => n >= 1); // a primeira chamada do rascunho já saiu com a config lida
+    await salvarConfig(a.usuarioId, v1, EXTRA_A2);
+    expect(await lote).toEqual({ ack: true, retry: null });
+    expect(mock.chamadas).toHaveLength(4);
+    expect(systems().every((s) => s.includes(EXTRA_A) && !s.includes(EXTRA_A2))).toBe(true);
+    expect(await versoes(a)).toEqual({ lead: v1, rascunho: v1 });
+  });
+
+  it("deck que reaproveita o rascunho não chama o modelo nem muda a versão gravada", async () => {
+    const a = await novaConversa("cfg.reuso@eqi.local");
+    const v1 = await salvarConfig(a.usuarioId, 0, EXTRA_A);
+    await conversaComCaso("segue o material, assessor Luiz", a);
+    expect(await t.lote(await pedirDeck(a))).toEqual({ ack: true, retry: null });
+    await salvarConfig(a.usuarioId, v1, EXTRA_A2);
+    mock.zerar();
+    expect(await t.lote(await pedirDeck(a))).toEqual({ ack: true, retry: null });
+    expect(mock.chamadas).toHaveLength(0);
+    expect(await versoes(a)).toEqual({ lead: v1, rascunho: v1 }); // a atual (v2) é outra: é isso que o alerta da tela mostra
+  });
+
+  it("transcrição nova refaz o lead com a config atual; o rascunho antigo e a versão dele somem", async () => {
+    const a = await novaConversa("cfg.refaz@eqi.local");
+    const v1 = await salvarConfig(a.usuarioId, 0, EXTRA_A);
+    await conversaComCaso("segue o material, assessor Luiz", a);
+    expect(await t.lote(await pedirDeck(a))).toEqual({ ack: true, retry: null });
+    expect(await versoes(a)).toEqual({ lead: v1, rascunho: v1 });
+    const v2 = await salvarConfig(a.usuarioId, v1, EXTRA_A2);
+    mock.zerar();
+    const { msg } = await enviar(a, "", [{ nome: "outra_r1.txt", conteudo: `${TRANSCRICAO.toString("utf-8")}\nOutra reunião, outro dia.` }]);
+    expect(await t.lote(msg)).toEqual({ ack: true, retry: null });
+    const caso = (await casoSalvo(a))!;
+    expect(caso.rascunho).toBeUndefined();
+    expect(caso.configVersoes).toEqual({ lead: v2 }); // sem a chave `rascunho`
+    expect(mock.chamadas.some((x) => x.schema === "Lead" && x.system.includes(EXTRA_A2))).toBe(true);
+    expect(doTipo(await t.eventos(a.id), "caso").slice(-1)[0]).toMatchObject({ rascunhoPronto: false, configVersoes: { lead: v2 } });
+  });
+
+  it("falha ao ler a config: segue com o prompt original e grava versão 0 (o alerta da tela avisa, pois a atual é outra)", async () => {
+    const a = await novaConversa("cfg.falha@eqi.local");
+    await salvarConfig(a.usuarioId, 0, EXTRA_A);
+    await env.DB.prepare("ALTER TABLE config_prompt RENAME TO config_prompt_fora").run();
+    try {
+      await conversaComCaso("segue o material, assessor Luiz", a);
+      mock.zerar();
+      expect(await t.lote(await pedirDeck(a))).toEqual({ ack: true, retry: null });
+      expect(await statusDe(a)).toBe("concluida");
+      expect(systems().some((s) => s.includes(EXTRA_A))).toBe(false);
+      expect((await casoSalvo(a))!.decks).toHaveLength(1);
+      expect(await versoes(a)).toEqual({ lead: 0, rascunho: 0 });
+    } finally {
+      await env.DB.prepare("ALTER TABLE config_prompt_fora RENAME TO config_prompt").run();
+    }
   });
 });
 
