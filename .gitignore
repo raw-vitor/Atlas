@@ -44,3 +44,6 @@ next-env.d.ts
 .wrangler/
 .open-next/
 .dev.vars
+
+# gerado a partir de ../conhecimento (conteúdo interno, fora do git)
+/lib/knowledge.gerado.ts

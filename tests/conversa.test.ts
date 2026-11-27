@@ -9,7 +9,7 @@ import { casoAvulso, hashTexto, MAX_TRANSCRICAO_CHARS, registrar, type Rascunho 
 import { FALHA_PERGUNTA, responderPergunta, trechosDaTranscricao } from "../lib/conversa";
 import type { Alocacao, Ativo, Decisao, Diagnostico, Lead } from "../lib/types";
 
-const uso = { chamadas: 0, entrada: 0, saida: 0 };
+const uso = { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 };
 const lead: Lead = { primeiro_nome: "Ana", situacao: ["Aposentada"], objetivos: ["Retirada de R$ 10 mil por mês"], restricoes: [],
   frases_literais: ["Preciso tirar uns 10 mil por mês"], perfil: "Conservador", freio_principal: "", aporte_mensal: 0,
   meta_patrimonio_citada: "", lacunas: [] };

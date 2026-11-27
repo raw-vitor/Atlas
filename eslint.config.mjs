@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     ".wrangler/**", // estado local do wrangler
     "components/ui/**", // snippets gerados pelo Chakra CLI
     "spike/**", // Worker descartável da fase 0, fora do app
+    "cloudflare-env.d.ts", // gerado por `npm run cf-typegen`
   ]),
 ]);
 

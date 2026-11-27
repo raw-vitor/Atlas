@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { interpretar, papeisDaMensagem } from "../lib/chat";
 import { dataMaisRecente, juntarTranscricoes, unirCarteiras } from "../lib/pipeline";
 
-const uso = { chamadas: 0, entrada: 0, saida: 0 };
+const uso = { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 };
 const b = (s: string) => Buffer.from(s);
 
 const EXTRATO_XP = `POSICAO CONSOLIDADA DE INVESTIMENTOS XP

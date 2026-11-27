@@ -61,7 +61,7 @@ describe("jobs", () => {
   });
   it("cancelar um job que já terminou não muda nada", async () => {
     const j = jobs.novo();
-    jobs.submeter(j, async () => ({ arquivos: {}, avisos: [], pendencias: [], resumo: { lead: "x", total: 1, perfil: "p" }, tokens: { chamadas: 0, entrada: 0, saida: 0 } }));
+    jobs.submeter(j, async () => ({ arquivos: {}, avisos: [], pendencias: [], resumo: { lead: "x", total: 1, perfil: "p" }, tokens: { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 } }));
     await new Promise((r) => setTimeout(r, 10));
     expect(j.status).toBe("pronto");
     expect(jobs.cancelar(j)).toBe(false);

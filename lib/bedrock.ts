@@ -1,9 +1,7 @@
 /**
  * Cliente do Amazon Bedrock (Converse + structured output). Só roda no servidor.
- * - Com BEDROCK_API_KEY / AWS_BEARER_TOKEN_BEDROCK: fetch direto com Authorization: Bearer.
- * - Sem chave: SDK com as credenciais AWS padrão do ambiente.
+ * Só fetch com Authorization: Bearer (BEDROCK_API_KEY / AWS_BEARER_TOKEN_BEDROCK). Sem chave, lança LLMError.
  */
-import { BedrockRuntimeClient, ConverseCommand, type ConverseCommandInput } from "@aws-sdk/client-bedrock-runtime";
 import { config } from "./config";
 import { CanceladoError, checarCancelado, esperar, sinalAtual } from "./cancelamento";
 import { canonico, schemaReduzido, validar, type SchemaName } from "./schemas";
@@ -11,32 +9,37 @@ import { msgRetry } from "./prompts";
 import type { ChatJson } from "./steps";
 
 export class LLMError extends Error {}
-export interface Uso { chamadas: number; entrada: number; saida: number }
-export const novoUso = (): Uso => ({ chamadas: 0, entrada: 0, saida: 0 });
+/** `maiorEntrada`: maior usage.inputTokens de uma única chamada (base do medidor de contexto). */
+export interface Uso { chamadas: number; entrada: number; saida: number; maiorEntrada: number }
+export const novoUso = (): Uso => ({ chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 });
+
+/** Corpo do Converse. O SDK da AWS saiu; o tipo é só o que o Atlas envia. */
+interface ConverseCommandInput { modelId?: string; [campo: string]: unknown }
 
 type Msg = { role: "user" | "assistant"; content: ({ text: string } | { image: { format: string; source: { bytes: Uint8Array } } })[] };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Resp = any;
 
-let sdk: BedrockRuntimeClient | null = null;
+function base64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
 
 async function converse(body: ConverseCommandInput, signal: AbortSignal): Promise<Resp> {
-  if (config.apiKey) {
-    const base = config.endpoint || `https://bedrock-runtime.${config.region}.amazonaws.com`;
-    const url = `${base}/model/${encodeURIComponent(body.modelId!)}/converse`;
-    const { modelId: _m, ...rest } = body;
-    void _m;
-    const json = JSON.stringify(rest, (_k, v) => (v instanceof Uint8Array ? Buffer.from(v).toString("base64") : v));
-    const r = await fetch(url, {
-      method: "POST", signal, body: json,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-    });
-    if (!r.ok) throw new LLMError(`Bedrock HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
-    return r.json();
-  }
-  sdk ??= new BedrockRuntimeClient({ region: config.region, ...(config.endpoint ? { endpoint: config.endpoint } : {}) });
-  return sdk.send(new ConverseCommand(body), { abortSignal: signal });
+  if (!config.apiKey) throw new LLMError("Chave do Bedrock ausente: defina BEDROCK_API_KEY (ou AWS_BEARER_TOKEN_BEDROCK).");
+  const base = config.endpoint || `https://bedrock-runtime.${config.region}.amazonaws.com`;
+  const url = `${base}/model/${encodeURIComponent(body.modelId!)}/converse`;
+  const { modelId: _m, ...rest } = body;
+  void _m;
+  const json = JSON.stringify(rest, (_k, v) => (v instanceof Uint8Array ? base64(v) : v));
+  const r = await fetch(url, {
+    method: "POST", signal, body: json,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+  });
+  if (!r.ok) throw new LLMError(`Bedrock HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  return r.json();
 }
 
 function textoDe(resp: Resp): string {
@@ -47,7 +50,9 @@ function textoDe(resp: Resp): string {
 function contar(uso: Uso | undefined, resp: Resp) {
   if (!uso) return;
   uso.chamadas += 1;
-  uso.entrada += resp?.usage?.inputTokens ?? 0;
+  const entrada = resp?.usage?.inputTokens ?? 0;
+  uso.entrada += entrada;
+  if (entrada > (uso.maiorEntrada ?? 0)) uso.maiorEntrada = entrada;
   uso.saida += resp?.usage?.outputTokens ?? 0;
 }
 
@@ -78,7 +83,7 @@ export function criarChatJson(uso?: Uso): ChatJson {
         const resp = await chamar({
           modelId: config.modelId,
           system: [{ text: system }],
-          messages: messages as ConverseCommandInput["messages"],
+          messages: messages,
           inferenceConfig: { temperature, maxTokens: MAX_TOKENS[schema] },
           outputConfig: {
             textFormat: {
@@ -136,7 +141,7 @@ export async function perguntarJson(system: string, user: string, schema: object
 }
 
 export async function ping(): Promise<{ ok: boolean; modelo: string; regiao: string; auth: string; erro?: string }> {
-  const base = { modelo: config.modelId, regiao: config.region, auth: config.apiKey ? "api-key" : "credenciais-aws" };
+  const base = { modelo: config.modelId, regiao: config.region, auth: config.apiKey ? "api-key" : "sem-chave" };
   try {
     const r = await perguntarJson("Responda só com o JSON pedido.", "Devolva ok=true.",
       { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"], additionalProperties: false });

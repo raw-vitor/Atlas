@@ -8,7 +8,7 @@ vi.mock("@/lib/bedrock", async (orig) => ({
   ...(await orig<typeof import("@/lib/bedrock")>()),
   perguntarJson: (...a: unknown[]) => perguntar(...a),
   criarChatJson: () => { throw new Error("criarChatJson não deveria ser chamado"); },
-  novoUso: () => ({ chamadas: 0, entrada: 0, saida: 0 }),
+  novoUso: () => ({ chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 }),
 }));
 vi.mock("@/lib/conversa", () => ({ responderPergunta: (...a: unknown[]) => responder(...a) }));
 

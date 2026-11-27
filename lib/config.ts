@@ -4,6 +4,12 @@ import path from "node:path";
 const env = (k: string, d: string) => (process.env[k] ?? "").trim() || d;
 
 export const config = {
+  // "production" desliga o cabeçalho x-atlas-dev-usuario e o ATLAS_DEV_USUARIO (lib/auth.ts).
+  ambiente: env("ENVIRONMENT", "development"),
+  // Usuário local quando não há Cloudflare Access (só fora de produção).
+  devUsuario: env("ATLAS_DEV_USUARIO", "dev@eqi.local"),
+  // Sobreposição opcional do limite do medidor de contexto. 0 = usar a janela do modelo (lib/modelos.ts).
+  contextoTokens: Math.max(0, Math.floor(Number(env("ATLAS_CONTEXTO_TOKENS", "0"))) || 0),
   region: env("BEDROCK_REGION", "us-east-1"),
   modelId: env("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6"),
   // Chave do Bedrock (Bearer). Sem ela, o SDK usa as credenciais AWS padrão do ambiente.

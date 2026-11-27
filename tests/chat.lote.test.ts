@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { interpretar } from "../lib/chat";
 
 const fx = (n: string) => fs.readFileSync(path.join(__dirname, "fixtures", n));
-const uso = { chamadas: 0, entrada: 0, saida: 0 };
+const uso = { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 };
 
 describe("lote", () => {
   it("cópia e arquivo corrompido ficam em ignorados e não derrubam o envio", async () => {

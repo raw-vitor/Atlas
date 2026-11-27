@@ -1,11 +1,75 @@
 {
+	// Worker "atlas": Next.js via OpenNext + DO Conversa + fila de tarefas + Containers. Só roda local por enquanto
+	// (npm run preview). Ids de D1 abaixo são placeholders locais; não há deploy nem recurso remoto.
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"main": ".open-next/worker.js",
 	"name": "atlas",
+	// Entry customizado: reexporta o fetch do OpenNext e acrescenta queue, scheduled e as classes de DO/Container.
+	"main": "worker.ts",
 	"compatibility_date": "2026-11-23",
 	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
 	"assets": {
 		"directory": ".open-next/assets",
 		"binding": "ASSETS"
+	},
+	"vars": {
+		"ENVIRONMENT": "development"
+	},
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "atlas-db",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "migrations"
+		}
+	],
+	"r2_buckets": [{ "binding": "ARQUIVOS", "bucket_name": "atlas-arquivos" }],
+
+	"queues": {
+		"producers": [{ "binding": "TAREFAS", "queue": "atlas-tarefas" }],
+		"consumers": [
+			{
+				"queue": "atlas-tarefas",
+				// Um turno ou deck por invocação; a concorrência limita as chamadas simultâneas ao Bedrock e ao deck-service.
+				"max_batch_size": 1,
+				"max_concurrency": 5,
+				"max_retries": 3,
+				"dead_letter_queue": "atlas-tarefas-mortas"
+			}
+		]
+	},
+
+	"durable_objects": {
+		"bindings": [
+			{ "name": "CONVERSA", "class_name": "Conversa" },
+			{ "name": "EXTRATOR", "class_name": "Extrator" },
+			{ "name": "DECK", "class_name": "DeckService" }
+		]
+	},
+	// Classes de Container também são Durable Objects com SQLite.
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conversa", "Extrator", "DeckService"] }],
+
+	"containers": [
+		{
+			// Extração de .pdf, .xlsx e .xls (docs/FASE0_RELATORIO.md). O Node do xlsx de 25 MB chegou a 1,4 GB de RSS.
+			"class_name": "Extrator",
+			"image": "./containers/extrator/Dockerfile",
+			"image_build_context": ".",
+			"max_instances": 2,
+			"instance_type": { "vcpu": 0.5, "memory_mib": 2048, "disk_mb": 4000 }
+		},
+		{
+			// Mesma imagem do docker-compose: o contexto de build é o diretório pai de atlas/ (COPY deck-service ..., COPY app/...).
+			"class_name": "DeckService",
+			"image": "../deck-service/Dockerfile",
+			"image_build_context": "..",
+			"max_instances": 2,
+			"instance_type": "standard-1"
+		}
+	],
+
+	"triggers": {
+		// Purga diária (06:00 UTC): conversas sem uso há 90 dias e purgas pendentes.
+		"crons": ["0 6 * * *"]
 	}
 }

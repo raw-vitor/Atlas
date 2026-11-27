@@ -39,6 +39,9 @@ if (!fs.existsSync(knowledge)) falhar(`Pasta do método não encontrada: ${knowl
 if (!env.BEDROCK_API_KEY && !env.AWS_BEARER_TOKEN_BEDROCK && !env.AWS_ACCESS_KEY_ID && !env.AWS_PROFILE)
   log("Aviso: nenhuma credencial do Bedrock encontrada (BEDROCK_API_KEY). O chat vai falhar ao chamar a LLM.");
 if (spawnSync("which", ["soffice"]).status !== 0) log("Aviso: soffice (LibreOffice) não encontrado. O deck em PDF não será gerado.");
+if (!fs.existsSync(path.join(raiz, ".dev.vars"))) log("Aviso: .dev.vars não encontrado. Para o Worker local, copie .dev.vars.example para .dev.vars e preencha.");
+if (spawnSync("docker", ["info"], { stdio: "ignore", timeout: 10_000 }).status !== 0) log("Aviso: Docker não está disponível. O container do deck no wrangler não sobe sem ele.");
+if (spawnSync("npx", ["--no-install", "wrangler", "--version"], { cwd: raiz, stdio: "ignore", timeout: 30_000 }).status !== 0) log("Aviso: wrangler não respondeu a `npx wrangler --version`. Confira as dependências com npm install.");
 
 async function saude() {
   try {

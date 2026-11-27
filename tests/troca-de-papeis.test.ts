@@ -8,7 +8,7 @@ import { canonico, type SchemaName } from "../lib/schemas";
 
 const fx = (n: string) => path.join(__dirname, "fixtures", n);
 const canned = JSON.parse(fs.readFileSync(fx("canned.json"), "utf-8"));
-const uso = { chamadas: 0, entrada: 0, saida: 0 };
+const uso = { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 };
 const docx = fs.readFileSync(fx("transcricao_elisandro_docx.txt"), "utf8");
 const extrato = fs.readFileSync(fx("carteira_elisandro.csv"));
 const EXTRATO_TXT = `POSICAO CONSOLIDADA DE INVESTIMENTOS

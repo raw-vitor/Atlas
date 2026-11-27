@@ -16,7 +16,7 @@ describe.skipIf(!saude.ok)("deck-service (ponta a ponta sem LLM)", () => {
   it("gera pptx com 31 slides e pdf", async () => {
     const out = fs.mkdtempSync(path.join(os.tmpdir(), "atlas_it_"));
     const chat = async <T,>(_s: string, _u: string, schema: SchemaName) => canonico<T>(structuredClone(canned[schema]), schema);
-    const uso = { chamadas: 0, entrada: 0, saida: 0 };
+    const uso = { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 };
     const res = await rodar({
       carteiras: [{ nome: "carteira_elisandro.csv", buf: fs.readFileSync(fx("carteira_elisandro.csv")) }],
       transcricoes: [{ nome: "transcricao_elisandro.txt", buf: fs.readFileSync(fx("transcricao_elisandro.txt")) }],
@@ -38,7 +38,7 @@ describe.skipIf(!saude.ok)("deck-service (ponta a ponta sem LLM)", () => {
       if (schema === "Diagnostico") d.disse = [];
       return canonico<T>(d, schema);
     };
-    const uso = { chamadas: 0, entrada: 0, saida: 0 };
+    const uso = { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 };
     const res = await rodar({
       carteiras: [{ nome: "carteira_elisandro.csv", buf: fs.readFileSync(fx("carteira_elisandro.csv")) }],
       transcricoes: [{ nome: "transcricao_elisandro.txt", buf: fs.readFileSync(fx("transcricao_elisandro.txt")) }],

@@ -7,7 +7,7 @@ import { aplicarAjustes, casoAvulso, hashTexto, prontidao } from "../lib/caso";
 import { interpretarInstrucao } from "../lib/instrucao";
 import type { Lead } from "../lib/types";
 
-const uso = { chamadas: 0, entrada: 0, saida: 0 };
+const uso = { chamadas: 0, entrada: 0, saida: 0, maiorEntrada: 0 };
 const lead: Lead = { primeiro_nome: "", situacao: [], objetivos: ["Aposentar aos 60"], restricoes: [], frases_literais: [],
   perfil: "Conservador", freio_principal: "", aporte_mensal: 0, meta_patrimonio_citada: "", lacunas: [] };
 const caso = () => {
