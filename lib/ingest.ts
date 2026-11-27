@@ -7,7 +7,9 @@ export { EXT_OK } from "./formatos";
 
 async function docx(buf: Buffer): Promise<string> {
   const mammoth = await import("mammoth");
-  return (await mammoth.extractRawText({ buffer: buf })).value;
+  // Node usa `buffer`; o build "browser" do mammoth (escolhido pelo bundler no Worker) só lê `arrayBuffer`.
+  const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  return (await mammoth.extractRawText({ buffer: buf, arrayBuffer })).value;
 }
 
 async function pdf(buf: Buffer): Promise<string> {

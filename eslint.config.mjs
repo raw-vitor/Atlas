@@ -12,7 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    ".open-next/**", // saída do build OpenNext/Cloudflare
+    ".wrangler/**", // estado local do wrangler
     "components/ui/**", // snippets gerados pelo Chakra CLI
+    "spike/**", // Worker descartável da fase 0, fora do app
   ]),
 ]);
 
