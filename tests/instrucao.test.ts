@@ -21,15 +21,29 @@ describe("interpretarInstrucao", () => {
   beforeEach(() => perguntar.mockReset());
 
   it("devolve só o que o LLM extraiu e informa a situação do caso no prompt", async () => {
-    perguntar.mockResolvedValue({ usar_transcricao: true, primeiro_nome: " Carlos ", perfil: "Moderado", objetivos: ["", "Faculdade da filha"] });
+    perguntar.mockResolvedValue({ usar_transcricao: true, primeiro_nome: " Carlos ", perfil: "Moderado", objetivos: ["", "Faculdade da filha"], pergunta: false });
     const r = await interpretarInstrucao("o lead é o Carlos, moderado, usa a transcrição", caso(), uso);
-    expect(r).toEqual({ usarTranscricao: true, ajustes: { primeiro_nome: "Carlos", perfil: "Moderado", objetivos: ["Faculdade da filha"] } });
+    expect(r).toEqual({ usarTranscricao: true, ajustes: { primeiro_nome: "Carlos", perfil: "Moderado", objetivos: ["Faculdade da filha"] }, pergunta: false });
     expect(perguntar.mock.calls[0][1]).toContain("Primeiro nome do lead");
   });
 
   it("perfil fora da lista é descartado", async () => {
-    perguntar.mockResolvedValue({ usar_transcricao: false, primeiro_nome: "", perfil: "Agressivo", objetivos: [] });
-    expect(await interpretarInstrucao("x", caso(), uso)).toEqual({ usarTranscricao: false, ajustes: {} });
+    perguntar.mockResolvedValue({ usar_transcricao: false, primeiro_nome: "", perfil: "Agressivo", objetivos: [], pergunta: false });
+    expect(await interpretarInstrucao("x", caso(), uso)).toEqual({ usarTranscricao: false, ajustes: {}, pergunta: false });
+  });
+
+  it("marca a pergunta sobre o caso e pede o campo no schema", async () => {
+    perguntar.mockResolvedValue({ usar_transcricao: false, primeiro_nome: "", perfil: "", objetivos: [], pergunta: true });
+    expect(await interpretarInstrucao("por que o 10 mil não bate?", caso(), uso)).toEqual({ usarTranscricao: false, ajustes: {}, pergunta: true });
+    const schema = perguntar.mock.calls[0][2] as { required: string[]; properties: Record<string, unknown> };
+    expect(schema.required).toContain("pergunta");
+    expect(schema.properties.pergunta).toEqual({ type: "boolean" });
+    expect(perguntar.mock.calls[0][0]).toContain("- pergunta:");
+  });
+
+  it("pergunta ausente ou não booleana vale false", async () => {
+    perguntar.mockResolvedValue({ usar_transcricao: false, primeiro_nome: "", perfil: "", objetivos: [], pergunta: "sim" });
+    expect((await interpretarInstrucao("x", caso(), uso))?.pergunta).toBe(false);
   });
 
   it("resposta inválida do LLM devolve null (a mensagem segue o caminho normal)", async () => {

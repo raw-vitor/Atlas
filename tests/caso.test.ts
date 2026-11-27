@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { casoAvulso, hashTexto, prontidao, removerDerivada } from "../lib/caso";
+import { casoAvulso, hashTexto, prontidao, removerDerivada, transcricaoJunta } from "../lib/caso";
 import { toText } from "../lib/ingest";
 import { derivarCarteira, leitura, rascunho } from "../lib/pipeline";
 import { canonico, type SchemaName } from "../lib/schemas";
+import { checar } from "../lib/validate";
 
 const fx = (n: string) => path.join(__dirname, "fixtures", n);
 const esperado = JSON.parse(fs.readFileSync(fx("esperado.json"), "utf-8"));
@@ -54,8 +55,12 @@ describe("caso: Leitura e Rascunho separados", () => {
     await leitura(caso, chat, sem);
     await rascunho(caso, chat, sem);
     expect(chamadas.length).toBe(6);
-    expect(caso.rascunho!.avisos).toEqual(esperado.avisos);
-    expect(caso.rascunho!.pendencias).toEqual(esperado.pendencias);
+    // Os avisos divergem de propósito do Python (tests/paridade.test.ts); aqui vale serem os mesmos de checar() direto.
+    const r = caso.rascunho!;
+    const [avisos] = checar(caso.lead!, caso.ativos, caso.analise!, r.aloc, r.diag, r.dec, r.notas, transcricaoJunta(caso).texto);
+    expect(r.avisos).toEqual(avisos);
+    expect(r.avisos.length).toBeGreaterThan(0);
+    expect(r.pendencias).toEqual(esperado.pendencias);
   });
 
   it("fonte nova invalida o rascunho", async () => {

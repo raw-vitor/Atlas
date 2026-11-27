@@ -1,10 +1,11 @@
 import { autorizado, negado } from "@/lib/auth";
 import { criarChatJson, novoUso, type Uso } from "@/lib/bedrock";
 import { CanceladoError, checarCancelado } from "@/lib/cancelamento";
-import { aplicarAjustes, copiarCaso, restaurarCaso, eDerivada, hashTexto, obterCaso, publicoCaso, rebaixarCarteirasSubstituiveis, removerDerivada, temCarteiraReal, temExtrato, tocar, valoresParaCarteira, type Caso, type Fonte } from "@/lib/caso";
+import { aplicarAjustes, copiarCaso, restaurarCaso, eDerivada, hashTexto, obterCaso, prontidao, publicoCaso, rebaixarCarteirasSubstituiveis, registrar, removerDerivada, temCarteiraReal, temExtrato, tocar, valoresParaCarteira, type Caso, type Fonte } from "@/lib/caso";
 import { interpretarInstrucao, MAX_INSTRUCAO } from "@/lib/instrucao";
 import { interpretar } from "@/lib/chat";
 import { config } from "@/lib/config";
+import { responderPergunta } from "@/lib/conversa";
 import { deckSaude } from "@/lib/deck";
 import { MAX_ARQUIVOS, MAX_LOTE_MB } from "@/lib/formatos";
 import { derivarCarteira, leitura } from "@/lib/pipeline";
@@ -33,6 +34,9 @@ async function usarTranscricao(caso: Caso, uso: Uso, enviar: Enviar): Promise<st
 
 const erro = (reply: string, status: number) => Response.json({ erro: reply }, { status });
 
+const NAO_ENTENDI = "Não entendi o pedido. Posso gerar os slides, anotar nome, perfil ou objetivo do lead, usar a transcrição da R1 " +
+  "e responder perguntas sobre o caso (ex.: \"de onde veio o R$ 10 mil?\").";
+
 export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/mensagens">) {
   if (!autorizado(req)) return negado();
   const caso = obterCaso((await ctx.params).id);
@@ -58,8 +62,14 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
   const copia = copiarCaso(caso); // se o assessor cancelar, a mensagem some do caso como se não tivesse sido enviada
   caso.ocupado = true;
   const uso = novoUso();
-  return respostaSSE(async (enviar, signal) => {
+  return respostaSSE(async (sse, signal) => {
     try {
+      // Histórico no servidor: a mensagem do assessor e todo texto que o Atlas responde.
+      registrar(caso, "assessor", [msg.trim(), arquivos.length ? `(anexou: ${arquivos.map((f) => f.name).join(", ")})` : ""].filter(Boolean).join(" "));
+      const enviar: Enviar = (evento, dados) => {
+        if (evento === "texto") registrar(caso, "atlas", String((dados as { texto?: unknown }).texto ?? ""));
+        sse(evento, dados);
+      };
       // Mensagem curta sobre um caso aberto: o LLM diz se é um pedido ("usar a transcrição") ou um dado do lead.
       const curta = msg.trim().length > 0 && msg.trim().length <= MAX_INSTRUCAO;
       if (!arquivos.length && curta && caso.fontes.length) {
@@ -85,6 +95,16 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
           if (ins.usarTranscricao) partes.push(await usarTranscricao(caso, uso, enviar));
           tocar(caso);
           enviar("texto", { texto: [...partes, resumoDoCaso(caso, [])].join("\n") });
+          enviar("caso", publicoCaso(caso));
+          enviar("fim", { tokens: uso });
+          return;
+        }
+        // Pergunta sobre o caso, sem pedido de mudança: responde com o que já está no caso, sem alterá-lo.
+        if (ins?.pergunta) {
+          enviar("atividade", { pct: 30, msg: "Consultando o caso" });
+          const resposta = await responderPergunta(caso, msg, uso);
+          tocar(caso);
+          enviar("texto", { texto: resposta });
           enviar("caso", publicoCaso(caso));
           enviar("fim", { tokens: uso });
           return;
@@ -131,7 +151,12 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
       tocar(caso);
 
       if (!novos.length) {
-        const base = it.pergunta && !caso.fontes.length ? it.pergunta : resumoDoCaso(caso, [], avisosTriagem);
+        // Texto que não virou pedido, dado do lead, assessor ou data: o resumo de novo seria um loop. Diz o que dá para pedir.
+        const naoEntendi = caso.fontes.length > 0 && !arquivos.length && !!msg.trim() && !it.assessorInformado && !it.dataInformada;
+        const pr = prontidao(caso);
+        const base = it.pergunta && !caso.fontes.length ? it.pergunta
+          : naoEntendi ? NAO_ENTENDI + (pr.pronto ? "" : `\nPara gerar os slides ainda falta: ${pr.faltas.join("; ")}.`)
+          : resumoDoCaso(caso, [], avisosTriagem);
         enviar("texto", { texto: base + (ignorados.length ? `\nNão usei: ${ignorados.join("; ")}.` : "") });
         enviar("caso", publicoCaso(caso));
         enviar("fim", {});

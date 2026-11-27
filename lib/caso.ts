@@ -4,7 +4,7 @@ import { config } from "./config";
 import { valoresCitados } from "./citados";
 import { checarDados } from "./validate";
 import { eSubstituivelPorExtrato } from "./triagem-llm";
-import type { Alocacao, Analise, Ativo, Decisao, Diagnostico, Lead, Notas } from "./types";
+import type { Alocacao, Analise, Ativo, Aviso, Decisao, Diagnostico, Lead, Notas } from "./types";
 
 /** "contexto": deck anterior, anotações e afins. Não é posição nem fala do lead; só ajuda a ler o lead. */
 export type PapelFonte = "carteira" | "transcricao" | "contexto";
@@ -20,8 +20,10 @@ export interface Fonte {
 export interface AjustesLead { primeiro_nome?: string; perfil?: string; objetivos?: string[] }
 export interface Rascunho {
   aloc: Alocacao; diag: Diagnostico; dec: Decisao; notas: Notas;
-  avisos: string[]; pendencias: string[]; dataR2: string;
+  avisos: Aviso[]; pendencias: string[]; dataR2: string;
 }
+export interface MensagemHistorico { papel: "assessor" | "atlas"; texto: string; quando: number }
+export const MAX_HISTORICO = 20;
 export interface Edicao { quando: number; campo: string; antes: unknown; depois: unknown; origem: "assessor" }
 export interface DeckVersao { jobId: string; versao: number; criadoEm: number }
 
@@ -40,6 +42,15 @@ export interface Caso {
   rascunho?: Rascunho;
   edicoes: Edicao[];
   decks: DeckVersao[];
+  /** Últimas mensagens da conversa (até MAX_HISTORICO). Só em memória, com o mesmo TTL do caso. */
+  historico: MensagemHistorico[];
+}
+
+/** Guarda uma mensagem no histórico do caso, mantendo só as últimas MAX_HISTORICO. Texto vazio não entra. */
+export function registrar(c: Caso, papel: MensagemHistorico["papel"], texto: string) {
+  if (!texto.trim()) return;
+  c.historico.push({ papel, texto, quando: Date.now() });
+  if (c.historico.length > MAX_HISTORICO) c.historico.splice(0, c.historico.length - MAX_HISTORICO);
 }
 
 const g = globalThis as unknown as { __atlasCasos?: Map<string, Caso> };
@@ -55,7 +66,7 @@ export function casoAvulso(): Caso {
   const id = crypto.randomBytes(16).toString("hex"); // 128 bits
   const agora = Date.now();
   return { id, criado: agora, atualizado: agora, ocupado: false, fontes: [], ativos: [], dataPosicao: "",
-    pendenciasCarteira: [], avisosLeitura: [], divergencias: [], edicoes: [], decks: [] };
+    pendenciasCarteira: [], avisosLeitura: [], divergencias: [], edicoes: [], decks: [], historico: [] };
 }
 
 export function novoCaso(): Caso {
@@ -153,7 +164,7 @@ export function publicoCaso(c: Caso) {
     lead: c.lead ? { nome: limparNome(c.lead.primeiro_nome), perfil: c.lead.perfil, objetivos: c.lead.objetivos, aporteMensal: c.lead.aporte_mensal, lacunas: c.lead.lacunas } : null,
     carteira: c.analise ? { total: c.analise.total, nAtivos: c.analise.n_ativos, pctClasse: c.analise.pct_classe } : null,
     avisos: c.avisosLeitura, pendencias: c.pendenciasCarteira,
-    avisosMetodo: dados.avisos, pendenciasMetodo: dados.pendencias,
+    avisosMetodo: dados.avisos.map((a) => a.texto), pendenciasMetodo: dados.pendencias,
     opcoes: valoresParaCarteira(c).length ? [{ id: "usar_transcricao" as const, rotulo: "Usar valores da transcrição" }] : [],
     rascunhoPronto: !!c.rascunho, decks: c.decks, prontidao: prontidao(c), ocupado: c.ocupado,
   };
@@ -178,7 +189,7 @@ export function transcricaoJunta(c: Caso): { texto: string; aviso?: string } {
 }
 
 /** Avisos e pendências do método que dependem só dos dados lidos. Puro sobre o estado do caso. */
-export function avisosDosDados(c: Caso): { avisos: string[]; pendencias: string[] } {
+export function avisosDosDados(c: Caso): { avisos: Aviso[]; pendencias: string[] } {
   if (!c.lead || !c.analise) return { avisos: [], pendencias: [] };
   const [avisos, pendencias] = checarDados(c.lead, c.ativos, c.analise, transcricaoJunta(c).texto);
   return { avisos, pendencias };

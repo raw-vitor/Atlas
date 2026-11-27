@@ -156,7 +156,7 @@ export async function rascunho(caso: Caso, chat: ChatJson, p: Progress, pct0 = 0
   const [dec, notas] = await steps.fechar(lead, an, aloc, diag, { data_r2: dataR2 }, chat);
   p("validacao", f(0.9), "Conferindo regras do método");
   const [avisos, pendChecagem] = checar(lead, caso.ativos, an, aloc, diag, dec, notas, jt.texto);
-  if ("aviso" in jt && jt.aviso) avisos.push(jt.aviso);
+  if ("aviso" in jt && jt.aviso) avisos.push({ tipo: "leitura", texto: jt.aviso, motivo: "as transcrições juntas passam do limite de tamanho" });
   caso.rascunho = { aloc, diag, dec, notas, avisos, pendencias: [...pendChecagem, ...caso.pendenciasCarteira], dataR2 };
 }
 
@@ -174,7 +174,7 @@ export async function deck(caso: Caso, outDir: string, formatos: ("pptx" | "pdf"
     arquivos[f] = `${nome}.${f}`;
   }));
   p("fim", 100, "Pronto");
-  return { arquivos, avisos: r.avisos, pendencias: r.pendencias, resumo: { lead: lead.primeiro_nome, total: an.total, perfil: lead.perfil }, tokens: { ...uso } };
+  return { arquivos, avisos: r.avisos.map((a) => a.texto), pendencias: r.pendencias, resumo: { lead: lead.primeiro_nome, total: an.total, perfil: lead.perfil }, tokens: { ...uso } };
 }
 
 /** Leitura + Rascunho + Deck em sequência. Mesmo resultado de antes da divisão (tests/paridade.test.ts). */
