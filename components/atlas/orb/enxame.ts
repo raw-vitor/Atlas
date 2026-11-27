@@ -71,17 +71,20 @@ function matrizRotacao(yaw: number, pitch: number, roll: number) {
   ];
 }
 
+export type Estilo = "padrao" | "citoesqueleto";
+
 export interface Nivel {
   /** Pontos da casca. */ ns: number;
   /** Pontos do núcleo interno. */ ni: number;
   /** Com arestas k-NN, anel-guia e pontos quentes. */ detalhe: boolean;
+  /** "citoesqueleto": k=3 na casca, núcleo uniforme e desenho da 02·base (public/base.html). */ estilo: Estilo;
 }
 
-export function nivelDetalhe(tamanho: number): Nivel {
-  if (tamanho >= 300) return { ns: 920, ni: 170, detalhe: true };
-  if (tamanho >= 96) return { ns: 560, ni: 110, detalhe: true };
-  if (tamanho >= 40) return { ns: 160, ni: 30, detalhe: false };
-  return { ns: 90, ni: 20, detalhe: false };
+export function nivelDetalhe(tamanho: number, estilo: Estilo = "padrao"): Nivel {
+  if (tamanho >= 300) return { ns: 920, ni: 170, detalhe: true, estilo };
+  if (tamanho >= 96) return { ns: 560, ni: 110, detalhe: true, estilo };
+  if (tamanho >= 40) return { ns: 160, ni: 30, detalhe: false, estilo };
+  return { ns: 90, ni: 20, detalhe: false, estilo };
 }
 
 export class Geometria {
@@ -90,6 +93,9 @@ export class Geometria {
   readonly bx: Float32Array; readonly by: Float32Array; readonly bz: Float32Array;
   readonly sz: Float32Array; readonly ph: Float32Array;
   readonly arestas: Uint16Array;
+  readonly estilo: Estilo;
+  /** Arestas por nó da casca (só citoesqueleto usa; junção = grau >= 3). */
+  readonly grau: Uint8Array;
   readonly fasesAresta: Float32Array;
   /** Constelação 02·F: nós (1 a cada 3 pontos da casca), posição final de cada ponto e arestas k-NN entre os nós. */
   readonly nos: Uint16Array;
@@ -103,25 +109,28 @@ export class Geometria {
     const r = semeado(semente);
     const { ns, ni } = nivel;
     const n = ns + ni;
-    this.n = n; this.ns = ns;
+    this.n = n; this.ns = ns; this.estilo = nivel.estilo;
+    const cito = nivel.estilo === "citoesqueleto";
     this.bx = new Float32Array(n); this.by = new Float32Array(n); this.bz = new Float32Array(n);
     this.sz = new Float32Array(n); this.ph = new Float32Array(n);
     const sph = esferaFibonacci(ns, 0.4, r);
     for (let i = 0; i < ns; i++) {
       const j = 0.93 + r() * 0.14;
       this.bx[i] = sph.x[i] * j; this.by[i] = sph.y[i] * j; this.bz[i] = sph.z[i] * j;
-      this.sz[i] = 0.7 + r() * 0.9;
+      this.sz[i] = cito ? 0.7 + r() * 0.85 : 0.7 + r() * 0.9;
       this.ph[i] = r() * TAU;
     }
     for (let i = ns; i < n; i++) {
       const v = vetorUnitario(r);
       const camada = (i % 3) / 2;
-      const rad = 0.24 + (0.14 + 0.24 * camada) + 0.05 * Math.cbrt(r());
+      const rad = cito ? 0.22 + 0.38 * Math.cbrt(r()) : 0.24 + (0.14 + 0.24 * camada) + 0.05 * Math.cbrt(r());
       this.bx[i] = v[0] * rad; this.by[i] = v[1] * rad; this.bz[i] = v[2] * rad;
       this.sz[i] = 0.55 + r() * 0.65;
       this.ph[i] = r() * TAU;
     }
-    this.arestas = nivel.detalhe ? arestasKnn(sph.x, sph.y, sph.z, ns, 2) : new Uint16Array(0);
+    this.arestas = nivel.detalhe ? arestasKnn(sph.x, sph.y, sph.z, ns, cito ? 3 : 2) : new Uint16Array(0);
+    this.grau = new Uint8Array(ns);
+    for (let q = 0; q < this.arestas.length; q++) { const v = this.arestas[q]; this.grau[v] = Math.min(255, this.grau[v] + 1); }
     this.fasesAresta = Float32Array.from({ length: this.arestas.length / 2 }, () => r() * TAU);
 
     // Constelação: gerador próprio, para não mexer na sequência da esfera.
@@ -166,7 +175,7 @@ export class Geometria {
 // O k-NN custa O(n²): as esferas da página compartilham a geometria pelo nível de detalhe.
 const cache = new Map<string, Geometria>();
 export function geometriaPara(nivel: Nivel): Geometria {
-  const chave = `${nivel.ns}:${nivel.ni}:${nivel.detalhe}`;
+  const chave = `${nivel.ns}:${nivel.ni}:${nivel.detalhe}:${nivel.estilo}`;
   let g = cache.get(chave);
   if (!g) { g = new Geometria(nivel); cache.set(chave, g); }
   return g;
@@ -190,6 +199,8 @@ export interface QuadroEnxame {
   /** 0 = esfera, 1 = constelação 02·F. Só vale com detalhe. */
   constel?: number;
   frente: RGB; tras: RGB; nucleo: RGB; linha: RGB; quente: RGB;
+  /** Paleta para fundo escuro: soma a luz dos pontos ("lighter"). */
+  aditivo?: boolean;
 }
 
 /** Buffers de projeção reutilizados entre quadros. */
@@ -207,6 +218,7 @@ export function desenharEnxame(g: Geometria, P: Projecao, f: QuadroEnxame, detal
   const { ctx, d, tamanho } = f;
   const lado = f.lado ?? tamanho;
   const cx = lado / 2, cy = lado / 2, R = tamanho * 0.29 * Math.max(0.1, f.amp ?? 1);
+  const cito = g.estilo === "citoesqueleto", grau = g.grau;
   const { n, ns, bx, by, bz, sz, ph, arestas, fasesAresta, ehNo, alvoX, alvoY, alvoZ, arestasC, atrasoC } = g;
   const cm = detalhe && g.nos.length ? lim(f.constel ?? 0) : 0;
   const ePos = suave(0, 0.6, cm);
@@ -230,15 +242,16 @@ export function desenharEnxame(g: Geometria, P: Projecao, f: QuadroEnxame, detal
 
   // Brilho do núcleo
   const rg = Math.min(lado / 2, R * (1.55 + e * 0.25 + Fc * 0.12)); // sem corte reto na borda do canvas
+  const glowA = cito ? 0.26 : 0.2;
   const forca = 0.55 + G * 0.5 + e * 0.4;
   const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rg);
-  grad.addColorStop(0, rgba(f.nucleo, 0.2 * forca));
-  grad.addColorStop(0.42, rgba(f.nucleo, 0.2 * 0.32 * forca));
+  grad.addColorStop(0, rgba(f.nucleo, glowA * forca));
+  grad.addColorStop(0.42, rgba(f.nucleo, glowA * 0.32 * forca));
   grad.addColorStop(1, rgba(f.nucleo, 0));
   ctx.fillStyle = grad;
   ctx.beginPath(); ctx.arc(cx, cy, rg, 0, TAU); ctx.fill();
 
-  if (detalhe && cm < 0.99) {
+  if (detalhe && !cito && cm < 0.99) {
     // Anel-guia do núcleo
     ctx.strokeStyle = rgba(f.linha, (0.06 + 0.08 * Fc) * (0.6 + 0.4 * G) * (1 - suave(0, 0.5, cm)));
     ctx.lineWidth = 0.75 * reforco;
@@ -277,18 +290,19 @@ export function desenharEnxame(g: Geometria, P: Projecao, f: QuadroEnxame, detal
       const vis = suave(-0.1, 0.6, (P.z[a] + P.z[b]) * 0.5);
       if (vis < 0.02) { P.binAresta[k] = 255; continue; }
       const pulsoRota = 0.5 + 0.5 * Math.sin(tw + fasesAresta[k] - d.flow * 1.2);
-      const peso = (0.22 + 0.78 * Math.pow(pulsoRota, 1.4)) * (0.55 + 0.45 * Rt);
+      const peso = cito ? (0.3 + 0.7 * pulsoRota * pulsoRota) * (0.7 + 0.3 * Rt) : (0.22 + 0.78 * Math.pow(pulsoRota, 1.4)) * (0.55 + 0.45 * Rt);
       P.binAresta[k] = Math.min(BINS_ARESTA - 1, (vis * peso * BINS_ARESTA) | 0);
     }
     ctx.lineWidth = 0.82 * reforco;
     for (let b = 0; b < BINS_ARESTA; b++) {
+      if (cito) ctx.lineWidth = (0.55 + (b / BINS_ARESTA) * 0.65) * reforco;
       ctx.beginPath();
       for (let k = 0; k < ne; k++) {
         if (P.binAresta[k] !== b) continue;
         const i = arestas[2 * k], j = arestas[2 * k + 1];
         ctx.moveTo(P.x[i], P.y[i]); ctx.lineTo(P.x[j], P.y[j]);
       }
-      ctx.strokeStyle = rgba(f.linha, ((b + 0.5) / BINS_ARESTA) * (0.07 + 0.22 * G) * fo);
+      ctx.strokeStyle = rgba(f.linha, ((b + 0.5) / BINS_ARESTA) * (cito ? 0.07 + 0.2 * G : 0.07 + 0.22 * G) * fo);
       ctx.stroke();
     }
   }
@@ -321,13 +335,15 @@ export function desenharEnxame(g: Geometria, P: Projecao, f: QuadroEnxame, detal
   }
 
   for (let i = 0; i < n; i++) P.bin[i] = Math.min(BINS_PONTO - 1, Math.max(0, (lim((P.z[i] + 1) * 0.5) * BINS_PONTO) | 0));
+  const boost = cito ? 1.25 : 1;
+  if (cito && f.aditivo) ctx.globalCompositeOperation = "lighter";
   for (let b = 0; b < BINS_PONTO; b++) {
-    const k = (b + 0.5) / BINS_PONTO, dof = 1 + (1 - k) * 0.3;
+    const k = (b + 0.5) / BINS_PONTO, dof = 1 + (1 - k) * (cito ? 0.75 : 0.3);
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       if (P.bin[i] !== b) continue;
       const kn = cm <= 0 ? 1 : ehNo[i] ? 1 + 0.3 * suave(0.3, 1, cm) : 1 - suave(0.15, 0.65, cm);
-      const rr = sz[i] * P.s[i] * dof * reforco * kn;
+      const rr = sz[i] * P.s[i] * dof * reforco * kn * boost * (cito && i < ns && grau[i] >= 3 ? 1.2 : 1);
       if (rr < 0.04) continue;
       ctx.moveTo(P.x[i] + rr, P.y[i]); ctx.arc(P.x[i], P.y[i], rr, 0, TAU);
     }
@@ -335,7 +351,33 @@ export function desenharEnxame(g: Geometria, P: Projecao, f: QuadroEnxame, detal
     ctx.fill();
   }
 
-  if (detalhe && cm < 0.99) {
+  if (cito) ctx.globalCompositeOperation = "source-over";
+
+  if (cito && detalhe && fo > 0.01) {
+    // Anéis nas junções (grau >= 3) voltadas para a câmera
+    ctx.lineWidth = 0.7 * reforco;
+    for (let i = 0; i < ns; i += 9) {
+      if (P.z[i] < 0.15 || grau[i] < 3) continue;
+      ctx.strokeStyle = rgba(f.quente, suave(0.15, 0.75, P.z[i]) * 0.32 * fo);
+      ctx.beginPath(); ctx.arc(P.x[i], P.y[i], sz[i] * P.s[i] * boost * 1.9 * reforco, 0, TAU); ctx.stroke();
+    }
+  }
+
+  if (cito && detalhe && fo > 0.01) {
+    // Pontos quentes da 02·base: passo 23
+    ctx.fillStyle = rgba(f.quente, 0.85 * fo);
+    ctx.beginPath();
+    for (let i = 0; i < ns; i += 23) {
+      if (P.z[i] < 0.2) continue;
+      const s = suave(0.55, 1, Math.sin(d.sig * 2.1 + ph[i])) * suave(0.2, 0.6, P.z[i]);
+      if (s < 0.02) continue;
+      const rr = (1 + s * 1.6) * boost * reforco;
+      ctx.moveTo(P.x[i] + rr, P.y[i]); ctx.arc(P.x[i], P.y[i], rr, 0, TAU);
+    }
+    ctx.fill();
+  }
+
+  if (!cito && detalhe && cm < 0.99) {
     // Pontos quentes: sinais que atravessam a face voltada para a câmera
     ctx.fillStyle = rgba(f.quente, (0.78 + 0.15 * lim(Fc)) * (1 - suave(0, 0.4, cm)));
     ctx.beginPath();
@@ -357,6 +399,7 @@ export function desenharEnxame(g: Geometria, P: Projecao, f: QuadroEnxame, detal
     ctx.fillStyle = gh;
     ctx.beginPath(); ctx.arc(cx, cy, rHalo, 0, TAU); ctx.fill();
   }
+  if (cito && cm <= 0.3) return; // fora da constelação não há ponto central
   const rNucleo = R * (0.032 + 0.012 * lim(Fc) + 0.01 * d.level) * (1 + 0.5 * suave(0.3, 1, cm));
   ctx.fillStyle = rgba(f.quente, 0.55 + 0.35 * lim(Fc));
   ctx.beginPath(); ctx.arc(cx, cy, rNucleo, 0, TAU); ctx.fill();

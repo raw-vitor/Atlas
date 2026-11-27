@@ -435,6 +435,11 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
     const t = setTimeout(() => setSegurando(false), 3000); // rede de segurança se a esfera não avisar
     return () => clearTimeout(t);
   }, [processandoPrimeira, segurando]);
+  // Tamanho fixado uma vez no mount (mudar `tamanho` recria o motor da esfera): menor em celular e telas baixas.
+  const [tamanhoOrb, setTamanhoOrb] = useState(280);
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 640px), (max-height: 760px)").matches) setTamanhoOrb(200);
+  }, []);
   const central = carregada && (vazia || processandoPrimeira || segurando);
 
   return (
@@ -488,7 +493,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
         ) : central ? (
           // Uma única esfera na tela vazia, no processamento e na volta: assim ela não é recriada e a transição é contínua.
           <Flex flex="1" direction="column" align="center" justify="center" gap="5" px="4" textAlign="center">
-            <AtlasOrb tamanho={140} crescimento={1.6} ampliar={processandoPrimeira} estado={ocupada ? "pensando" : "parado"} aoAssentar={() => setSegurando(false)} />
+            <AtlasOrb destaque tamanho={tamanhoOrb} crescimento={1.6} ampliar={processandoPrimeira} estado={ocupada ? "pensando" : "parado"} aoAssentar={() => setSegurando(false)} />
             {processandoPrimeira ? (
               <>
                 <Heading size="2xl" color="profundo">Processando a carteira e a transcrição…</Heading>

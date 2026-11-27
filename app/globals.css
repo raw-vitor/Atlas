@@ -13,6 +13,14 @@ body { font-family: var(--font-geist-sans), system-ui, sans-serif; }
 .atlas-orb[data-estado="falando"] .atlas-orb-aura { border-color: rgba(99,198,165,.8); }
 .atlas-orb[data-estado="falando"] .atlas-orb-aura-externa { border-color: rgba(99,198,165,.5); }
 .atlas-orb[data-estado="erro"] .atlas-orb-aura, .atlas-orb[data-estado="erro"] .atlas-orb-aura-externa { border-color: rgba(181,80,60,.3); animation: none; }
+/* Fundo escuro (<AtlasOrb fundo="escuro">, futura tela de login; docs/FUNDO_ESCURO_ATLAS.md). */
+.atlas-orb[data-fundo="escuro"] .atlas-orb-aura { border-color: rgba(99,198,165,.18); }
+.atlas-orb[data-fundo="escuro"] .atlas-orb-aura-externa { border-color: rgba(99,198,165,.08); }
+.atlas-orb[data-fundo="escuro"][data-estado="pensando"] .atlas-orb-aura { border-color: rgba(99,198,165,.5); }
+.atlas-orb[data-fundo="escuro"][data-estado="pensando"] .atlas-orb-aura-externa { border-color: rgba(99,198,165,.26); }
+.atlas-orb[data-fundo="escuro"][data-estado="falando"] .atlas-orb-aura { border-color: rgba(99,198,165,.8); }
+.atlas-orb[data-fundo="escuro"][data-estado="falando"] .atlas-orb-aura-externa { border-color: rgba(99,198,165,.45); }
+.atlas-orb[data-fundo="escuro"][data-estado="erro"] .atlas-orb-aura, .atlas-orb[data-fundo="escuro"][data-estado="erro"] .atlas-orb-aura-externa { border-color: rgba(181,80,60,.35); animation: none; }
 @keyframes atlas-aura { 0%,100% { opacity: .35; transform: scale(1); } 50% { opacity: 1; transform: scale(1.03); } }
 @media (prefers-reduced-motion: reduce) { .atlas-orb-aura { animation: none !important; } }
 

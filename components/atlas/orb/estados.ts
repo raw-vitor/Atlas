@@ -24,6 +24,10 @@ export interface ParametrosEstado {
 const VERDE = { frente: [0, 64, 49] as RGB, tras: [99, 198, 165] as RGB, nucleo: [0, 158, 118] as RGB, linha: [0, 64, 49] as RGB, quente: [0, 158, 118] as RGB };
 const VERMELHO = { frente: [92, 31, 20] as RGB, tras: [231, 177, 166] as RGB, nucleo: [181, 80, 60] as RGB, linha: [92, 31, 20] as RGB, quente: [181, 80, 60] as RGB };
 
+// Paleta para fundo escuro (citoesqueleto): claro na frente, escuro atrás.
+const VERDE_ESCURO = { frente: [184, 255, 231] as RGB, tras: [0, 92, 70] as RGB, nucleo: [0, 185, 139] as RGB, linha: [99, 198, 165] as RGB, quente: [214, 255, 241] as RGB };
+const VERMELHO_ESCURO = { frente: [255, 214, 205] as RGB, tras: [110, 30, 18] as RGB, nucleo: [210, 90, 66] as RGB, linha: [220, 140, 120] as RGB, quente: [255, 230, 224] as RGB };
+
 /** Esfera parada: valores definidos no ajuste manual (rotação 0,20, onda 0,08, rotas 0, coerência 0,08, intensidade 1,80x). */
 const PARADO = { spin: 0.2, conv: 0, wave: 0.08, route: 0, focus: 0.08, intensidade: 1.8 };
 const parado: ParametrosEstado = {
@@ -46,6 +50,14 @@ export const ESTADOS: Record<OrbEstado, ParametrosEstado> = {
   pensando: { spin: 0.66, conv: -0.07, wave: 0.26, route: 0.95, focus: 0.92, glow: 0.92, flow: 1.15, sig: 1.55, breath: 0.13, scale: 0.965, fixo: 0, ...VERDE },
   falando: { spin: 0.42, conv: 0.06, wave: 0.88, route: 0.75, focus: 0.62, glow: 1, flow: 0.76, sig: 1.05, breath: 0.11, scale: 1.045, fixo: 0, ...VERDE },
   erro: { spin: 0.08, conv: 0, wave: 0, route: 0, focus: 0, glow: 0.3, flow: 0.1, sig: 0.1, breath: 0.05, scale: 0.95, fixo: 0, ...VERMELHO },
+};
+
+/** Mesma dinâmica de ESTADOS, com as cores para fundo escuro. */
+export const ESTADOS_ESCURO: Record<OrbEstado, ParametrosEstado> = {
+  parado: { ...ESTADOS.parado, ...VERDE_ESCURO },
+  pensando: { ...ESTADOS.pensando, ...VERDE_ESCURO },
+  falando: { ...ESTADOS.falando, ...VERDE_ESCURO },
+  erro: { ...ESTADOS.erro, ...VERMELHO_ESCURO },
 };
 
 /** Nível de "áudio" simulado, 0 a 1. `t` em segundos. Determinístico. */
