@@ -13,7 +13,8 @@ const canned = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../fix
 const ATIVO_DERIVADO = { nome: "CDB", emissor: "a confirmar", classe: "Pós-fixado", subclasse: "Bancário com FGC", liquidez: "a confirmar",
   vencimento: "a confirmar", valor: 600000, fora_do_depara: false };
 
-export interface ChamadaMock { schema: string; inputTokens: number }
+/** `system`: o prompt de sistema enviado (para conferir a personalização do assessor). */
+export interface ChamadaMock { schema: string; inputTokens: number; system: string }
 
 export interface MockBedrock {
   url: string;
@@ -56,7 +57,8 @@ export async function iniciarMockBedrock(): Promise<MockBedrock> {
       const js = b.outputConfig?.textFormat?.structure?.jsonSchema as { name: string; schema: string } | undefined;
       const schema = js?.name ?? "imagem";
       const props = js ? (JSON.parse(js.schema).properties ?? {}) : {};
-      const chamada: ChamadaMock = { schema: js?.name === "Resposta" ? `Resposta:${Object.keys(props)[0]}` : schema, inputTokens: Math.ceil(corpo.length / 3.5) };
+      const chamada: ChamadaMock = { schema: js?.name === "Resposta" ? `Resposta:${Object.keys(props)[0]}` : schema, inputTokens: Math.ceil(corpo.length / 3.5),
+        system: String(b.system?.[0]?.text ?? "") };
       m.chamadas.push(chamada);
       m.emAndamento++;
       m.maxSimultaneas = Math.max(m.maxSimultaneas, m.emAndamento);

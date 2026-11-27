@@ -1,3 +1,4 @@
+import { temPersonalizacao } from "./configPrompt";
 import type { Anexo, CasoPublico, Contexto, ConversaResumo, Faixa, MensagemSalva, TarefaPublica } from "./types";
 
 /** Erro de chamada à API. `mensagem` já vem em português, pronta para a tela (campo `erro` do servidor). */
@@ -34,7 +35,7 @@ const json = (metodo: string, corpo: unknown): RequestInit => ({
 });
 const base = (id: string) => `/api/conversas/${encodeURIComponent(id)}`;
 
-export interface DetalheConversa { conversa: ConversaResumo; caso: CasoPublico; tarefa: TarefaPublica | null; contexto: Contexto | null; alertasVistos: Faixa[] }
+export interface DetalheConversa { conversa: ConversaResumo; caso: CasoPublico; tarefa: TarefaPublica | null; contexto: Contexto | null; alertasVistos: Faixa[]; configAtual: number }
 
 export const listarConversas = (cursor?: string | null) =>
   chamar<{ itens: ConversaResumo[]; cursor: string | null }>(`/api/conversas${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
@@ -105,3 +106,18 @@ export function enviarAnexo(id: string, arquivo: File, aoProgredir: (pct: number
 
 export const ehCancelamento = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 export const textoDoErro = (e: unknown) => (e instanceof ErroApi ? e.message : SEM_REDE);
+
+/**
+ * Estado das instruções do assessor, para o ponto do ícone e para manter `configAtual` em dia ao voltar à aba.
+ * Qualquer falha (inclusive 404, rota ausente) vira null: "sem personalização", sem erro na tela.
+ */
+export async function obterPersonalizacao(): Promise<{ versao: number; personalizada: boolean } | null> {
+  try {
+    const r = await fetch("/api/configuracoes/prompt", { cache: "no-store" });
+    if (!r.ok) return null;
+    const j: unknown = await r.json();
+    const c = j && typeof j === "object" ? (j as { config?: { versao?: unknown; alterados?: Record<string, unknown>; extras?: { ativo: boolean }[] } }).config : undefined;
+    if (!c || typeof c.versao !== "number") return null;
+    return { versao: c.versao, personalizada: c.versao > 0 && temPersonalizacao(c) };
+  } catch { return null; }
+}

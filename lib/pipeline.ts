@@ -6,8 +6,9 @@ import * as steps from "./steps";
 import type { ChatJson } from "./steps";
 import type { Uso } from "./bedrock";
 import type { Ativo } from "./types";
+import type { ConfigPrompt } from "./prompt-tipos";
 import { CONFIANCA_MINIMA, classificarPorConteudo } from "./classificacao";
-import { MAX_TRANSCRICAO_CHARS, juntarTranscricoes, transcricaoJunta, aplicarAjustes, eDerivada, hashTexto, limparNome, NOME_FONTE_DERIVADA, removerDerivada, type Caso } from "./caso";
+import { MAX_TRANSCRICAO_CHARS, descartarRascunho, juntarTranscricoes, transcricaoJunta, aplicarAjustes, eDerivada, hashTexto, limparNome, NOME_FONTE_DERIVADA, removerDerivada, type Caso } from "./caso";
 
 export { MAX_TRANSCRICAO_CHARS, juntarTranscricoes };
 
@@ -88,8 +89,12 @@ export function avisosDePapel(carts: { nome: string; texto: string; origemPapel:
   return out;
 }
 
-/** Leitura: extrai ativos de cada carteira e o lead da transcrição; calcula a análise. Só refaz o que mudou. */
-export async function leitura(caso: Caso, chat: ChatJson, p: Progress): Promise<void> {
+/**
+ * Leitura: extrai ativos de cada carteira e o lead da transcrição; calcula a análise. Só refaz o que mudou.
+ * `config` (opcional) é a personalização de prompt do assessor; só muda o texto enviado ao modelo. Ao extrair o lead,
+ * o caso guarda a versão dela em `configVersoes.lead` (0 sem config).
+ */
+export async function leitura(caso: Caso, chat: ChatJson, p: Progress, config?: ConfigPrompt): Promise<void> {
   const carts = caso.fontes.filter((f) => f.papel === "carteira");
   const trs = caso.fontes.filter((f) => f.papel === "transcricao")
     .sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR", { numeric: true }));
@@ -105,10 +110,10 @@ export async function leitura(caso: Caso, chat: ChatJson, p: Progress): Promise<
 
   p("carteira", 10, "Identificando ativos da carteira e lendo a transcrição da R1");
   const [saidas, lead] = await Promise.all([
-    Promise.all(pendentes.map((f) => steps.extrairAtivos(f.texto, chat))),
-    refazLead ? steps.extrairLead(jt!.texto, chat, ctxs.map((f) => ({ nome: f.nome, tipo: f.tipo ?? "contexto", texto: f.texto })), MAX_TRANSCRICAO_CHARS) : Promise.resolve(undefined)]);
+    Promise.all(pendentes.map((f) => steps.extrairAtivos(f.texto, chat, config))),
+    refazLead ? steps.extrairLead(jt!.texto, chat, ctxs.map((f) => ({ nome: f.nome, tipo: f.tipo ?? "contexto", texto: f.texto })), MAX_TRANSCRICAO_CHARS, config) : Promise.resolve(undefined)]);
   pendentes.forEach((f, i) => { f.ativos = saidas[i].ativos; f.dataPosicao = saidas[i].data_posicao; });
-  if (lead) { lead.primeiro_nome = limparNome(lead.primeiro_nome); caso.lead = aplicarAjustes(lead, caso.ajustesLead); caso.leadHash = hashTr; }
+  if (lead) { lead.primeiro_nome = limparNome(lead.primeiro_nome); caso.lead = aplicarAjustes(lead, caso.ajustesLead); caso.leadHash = hashTr; caso.configVersoes = { ...caso.configVersoes, lead: config?.versao ?? 0 }; }
   caso.carteiraSig = sig;
 
   const uniao = unirCarteiras(carts.map((f) => ({ nome: f.nome, ativos: f.ativos ?? [], data_posicao: f.dataPosicao ?? "" })));
@@ -122,23 +127,23 @@ export async function leitura(caso: Caso, chat: ChatJson, p: Progress): Promise<
     ...(caso.analise && caso.analise.total <= 0 ? ["O total da carteira ficou zerado. Confira o arquivo."] : []),
     ...(jt?.aviso ? [jt.aviso] : []),
   ];
-  caso.rascunho = undefined; // o rascunho depende de lead e carteira
+  descartarRascunho(caso); // o rascunho depende de lead e carteira
   p("leitura", 100, "Leitura concluída");
 }
 
 /** Monta a carteira com o que o lead disse na R1. Devolve os ativos usados; lista vazia se a fala não traz valores. */
-export async function derivarCarteira(caso: Caso, chat: ChatJson, p: Progress): Promise<Ativo[]> {
+export async function derivarCarteira(caso: Caso, chat: ChatJson, p: Progress, config?: ConfigPrompt): Promise<Ativo[]> {
   const trs = caso.fontes.filter((f) => f.papel === "transcricao").sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR", { numeric: true }));
   if (!trs.length) return [];
   const jt = juntarTranscricoes(trs);
   p("carteira", 10, "Lendo os valores citados na R1");
-  const saida = await steps.extrairAtivosDaTranscricao(jt.texto, chat);
+  const saida = await steps.extrairAtivosDaTranscricao(jt.texto, chat, config);
   const ativos = saida.ativos.filter((a) => a.valor > 0);
   if (!ativos.length) return [];
   removerDerivada(caso);
   caso.fontes.push({ nome: NOME_FONTE_DERIVADA, papel: "carteira", origemPapel: "transcricao", texto: jt.texto,
     hash: hashTexto("derivada:" + hashTexto(jt.texto)), ativos, dataPosicao: "" });
-  await leitura(caso, chat, p);
+  await leitura(caso, chat, p, config);
   return ativos;
 }
 
@@ -146,7 +151,7 @@ export const ymd = (d: Date) => d.toISOString().slice(0, 10);
 const yyyymmdd = (s: string) => s.replace(/-/g, "");
 
 /** Rascunho: alocação, diagnóstico, decisão e roteiro das notas, mais a conferência das regras do método. */
-export async function rascunho(caso: Caso, chat: ChatJson, p: Progress, pct0 = 0, pct1 = 85): Promise<void> {
+export async function rascunho(caso: Caso, chat: ChatJson, p: Progress, pct0 = 0, pct1 = 85, config?: ConfigPrompt): Promise<void> {
   const lead = caso.lead, an = caso.analise;
   if (!lead || !an) throw new Error("Faltam a carteira e os dados do lead para montar o rascunho.");
   const jt = transcricaoJunta(caso);
@@ -154,15 +159,16 @@ export async function rascunho(caso: Caso, chat: ChatJson, p: Progress, pct0 = 0
   const f = (x: number) => Math.round(pct0 + (pct1 - pct0) * x);
 
   p("alocacao", f(0.2), "Montando o De → Para");
-  const aloc = await steps.proporAlocacao(lead, an, chat);
+  const aloc = await steps.proporAlocacao(lead, an, chat, config);
   p("diagnostico", f(0.45), "Escrevendo diagnóstico e riscos");
-  const diag = await steps.diagnosticar(lead, an, aloc, chat);
+  const diag = await steps.diagnosticar(lead, an, aloc, chat, config);
   p("roteiro", f(0.7), "Escrevendo decisão e roteiro das notas");
-  const [dec, notas] = await steps.fechar(lead, an, aloc, diag, { data_r2: dataR2 }, chat);
+  const [dec, notas] = await steps.fechar(lead, an, aloc, diag, { data_r2: dataR2 }, chat, config);
   p("validacao", f(0.9), "Conferindo regras do método");
   const [avisos, pendChecagem] = checar(lead, caso.ativos, an, aloc, diag, dec, notas, jt.texto);
   if ("aviso" in jt && jt.aviso) avisos.push({ tipo: "leitura", texto: jt.aviso, motivo: "as transcrições juntas passam do limite de tamanho" });
   caso.rascunho = { aloc, diag, dec, notas, avisos, pendencias: [...pendChecagem, ...caso.pendenciasCarteira], dataR2 };
+  caso.configVersoes = { ...caso.configVersoes, rascunho: config?.versao ?? 0 };
 }
 
 /** O deck renderizado: os bytes de cada formato e o resumo para o card. Quem chama grava os bytes (R2). */

@@ -3,6 +3,7 @@ import { negado, usuarioAtual } from "../auth";
 import { env } from "../cf";
 import { conversaRpc } from "./conversaRpc";
 import { config } from "../config";
+import { lerConfigPrompt } from "../db/configPrompt";
 import { criarConversa, decodificarCursor, listarConversas, marcarApagada, renomearConversa, obterConversa } from "../db/conversas";
 import { janelaContexto } from "../modelos";
 import { FAIXAS } from "../tarefas/tipos";
@@ -57,11 +58,12 @@ export function getConversa(req: Request, id: string, injetado?: CloudflareEnv):
     const a = await autenticarConversa(req, id, injetado);
     if (ehResposta(a)) return a;
     const stub = conversaRpc(a.conversa.id, a.env);
-    const [estado, salvo] = await Promise.all([stub.estado(), stub.obterCaso()]);
+    // `configAtual`: versão da config de prompt do usuário autenticado (nunca de id vindo da requisição); o navegador a compara com `caso.configVersoes`.
+    const [estado, salvo, cfg] = await Promise.all([stub.estado(), stub.obterCaso(), lerConfigPrompt(a.env, a.usuario.id)]);
     if (estado.purgada) return naoEncontrada();
     const tarefa = estado.tarefa;
     const caso = await casoPublicoDe(a.env, a.usuario.id, a.conversa.id, tarefa, salvo.caso);
-    return Response.json({ conversa: a.conversa, caso, tarefa, contexto: estado.contexto, alertasVistos: estado.alertasVistos });
+    return Response.json({ conversa: a.conversa, caso, tarefa, contexto: estado.contexto, alertasVistos: estado.alertasVistos, configAtual: cfg.versao });
   });
 }
 

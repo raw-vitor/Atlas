@@ -1,13 +1,17 @@
 "use client";
-import { Button, Flex, Heading, IconButton, Skeleton, Stack, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Heading, IconButton, Skeleton, Stack, Text, VisuallyHidden } from "@chakra-ui/react";
+import NextLink from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LuMenu, LuSquare } from "react-icons/lu";
+import { LuMenu, LuSettings, LuSquare } from "react-icons/lu";
 import { AtlasOrb } from "@/components/atlas/AtlasOrb";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   ErroApi, apagarConversa, cancelarTarefa, criarConversa, ehCancelamento, enviarAnexo, enviarMensagem, gerarSlides,
-  listarConversas, listarMensagens, marcarAlertaVisto, obterConversa, textoDoErro,
+  listarConversas, listarMensagens, marcarAlertaVisto, obterConversa, obterPersonalizacao, textoDoErro,
 } from "./api";
 import { Composer } from "./Composer";
+import { ConfigAlerta } from "./ConfigAlerta";
+import { hrefConfig } from "./configPrompt";
 import { ContextoAlerta } from "./ContextoAlerta";
 import { ContextoMedidor } from "./ContextoMedidor";
 import { ConversaGaveta, ConversaLista, type EstadoLista } from "./ConversaLista";
@@ -25,6 +29,8 @@ import { UPLOADS_SIMULTANEOS, executarComLimite } from "./upload";
 const RASCUNHO = "novo";
 
 const JANELA_ESTADO_ATRASADO_MS = 4000;
+/** Intervalo mínimo entre duas conferências das instruções do assessor ao voltar para a aba. */
+const CONFERIR_CONFIG_MS = 15_000;
 
 interface Envio { ac: AbortController; fase: "upload" | "post"; cancelar: boolean; fimVisto: boolean }
 interface Pendencia { files: File[]; chaves: (string | undefined)[] }
@@ -53,6 +59,9 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
   const [arrastando, setArrastando] = useState(false);
   const [foco, setFoco] = useState(0);
   const profundidade = useRef(0);
+  // Instruções do assessor: `personalizada` acende o ponto no ícone; a versão atual vai para as conversas (alerta de versão anterior).
+  const [personalizada, setPersonalizada] = useState(false);
+  const configConferidaEm = useRef(0);
 
   // Espelhos em ref do que as funções assíncronas precisam ler no momento em que rodam.
   const ativaRef = useRef(ativaId);
@@ -111,7 +120,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
       const [d, m] = await Promise.all([obterConversa(id), listarMensagens(id)]);
       atualizar(id, (c) => {
         const base: ConversaUI = {
-          ...c, titulo: d.conversa.titulo, caso: d.caso, contexto: d.contexto ?? c.contexto, alertasVistos: d.alertasVistos,
+          ...c, titulo: d.conversa.titulo, caso: d.caso, contexto: d.contexto ?? c.contexto, alertasVistos: d.alertasVistos, configAtual: d.configAtual,
           mensagens: mesclar(c.mensagens, m.itens.map(paraMensagem)), carga: "ok", erroCarga: undefined,
           maisAntigas: inicial ? m.maisAntigas : c.maisAntigas,
         };
@@ -160,6 +169,27 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
     void buscarLista();
     if (conversaInicial) void carregarConversa(conversaInicial, true);
   }, [buscarLista, carregarConversa, conversaInicial]);
+
+  // ---- Instruções do assessor ----
+
+  /** Confere a versão atual das instruções ao montar e ao voltar para a aba (ele pode ter salvado em outra aba ou na página de configuração). */
+  const conferirConfig = useCallback(async (forcar: boolean) => {
+    if (!forcar && Date.now() - configConferidaEm.current < CONFERIR_CONFIG_MS) return;
+    configConferidaEm.current = Date.now();
+    const r = await obterPersonalizacao();
+    if (!r) return; // 404 (sem a rota) ou falha: sem personalização, sem erro na tela
+    setPersonalizada(r.personalizada);
+    setCache((cs) => (Object.values(cs).every((c) => c.configAtual === r.versao) ? cs
+      : Object.fromEntries(Object.entries(cs).map(([k, c]) => [k, c.configAtual === r.versao ? c : { ...c, configAtual: r.versao }]))));
+  }, []);
+
+  useEffect(() => {
+    void conferirConfig(true);
+    const aoVoltar = () => { if (document.visibilityState === "visible") void conferirConfig(false); };
+    window.addEventListener("focus", aoVoltar);
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => { window.removeEventListener("focus", aoVoltar); document.removeEventListener("visibilitychange", aoVoltar); };
+  }, [conferirConfig]);
 
   // ---- Eventos do servidor (uma conexão só: a da conversa ativa) ----
 
@@ -428,7 +458,22 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
           <IconButton aria-label="Alternar lista de conversas" variant="ghost" onClick={() => setMenu((m) => !m)} display={{ base: "none", md: "inline-flex" }}><LuMenu /></IconButton>
           <IconButton aria-label="Abrir a lista de conversas" variant="ghost" onClick={() => setGaveta(true)} display={{ base: "inline-flex", md: "none" }}><LuMenu /></IconButton>
           {!vazia && carregada && <Text fontWeight="medium" truncate>{titulo}</Text>}
+          <Tooltip content={personalizada ? "Suas instruções do Atlas (personalizadas)" : "Suas instruções do Atlas"}
+            positioning={{ placement: "left" }} openDelay={150} closeDelay={0} interactive={false}
+            contentProps={{ css: { "--tooltip-bg": "colors.profundo" }, color: "neve", px: "3", py: "2", rounded: "md", fontSize: "xs" }}>
+            <IconButton asChild aria-label="Suas instruções do Atlas" aria-describedby={personalizada ? "atlas-instrucoes-ativas" : undefined}
+              variant="ghost" ml="auto" position="relative" flexShrink={0}>
+              <NextLink href={hrefConfig(ativaId === RASCUNHO ? null : ativaId)}>
+                <LuSettings />
+                {personalizada && <Box aria-hidden position="absolute" top="2" right="2" w="2" h="2" rounded="full" bg="menta" borderWidth="1px" borderColor="neve" />}
+              </NextLink>
+            </IconButton>
+          </Tooltip>
+          {personalizada && <VisuallyHidden id="atlas-instrucoes-ativas">Você tem instruções personalizadas.</VisuallyHidden>}
         </Flex>
+        {carregada && ativa.caso && (
+          <ConfigAlerta key={ativaId} conversaId={ativaId} versoes={ativa.caso.configVersoes} atual={ativa.configAtual} />
+        )}
         {ativa.carga === "carregando" ? (
           <Stack flex="1" w="full" maxW="820px" mx="auto" px="4" py="6" gap="6" aria-busy="true" aria-label="Abrindo a conversa">
             <Skeleton h="10" w="55%" alignSelf="flex-end" rounded="2xl" css={{ "--start-color": "colors.areia", "--end-color": "colors.nevoa" }} />

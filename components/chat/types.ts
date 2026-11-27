@@ -1,3 +1,5 @@
+import type { ConfigVersoes } from "@/lib/prompt-tipos";
+
 // ---- Contrato com o servidor (docs/CONTRATO_API.md) ----
 
 export type Faixa = 60 | 85 | 95;
@@ -33,6 +35,8 @@ export interface CasoPublico {
   opcoes: { id: "usar_transcricao"; rotulo: string }[];
   rascunhoPronto: boolean; decks: { jobId: string; versao: number; criadoEm: number }[];
   prontidao: { pronto: boolean; faltas: string[]; faltasAcoes: string[] }; ocupado: boolean;
+  /** Versão da config de prompt usada no lead e no rascunho (ausente = etapa ainda não rodou). Compare com `configAtual`. */
+  configVersoes: ConfigVersoes;
 }
 
 // ---- Estado da tela ----
@@ -63,6 +67,8 @@ export interface ConversaUI {
   parcial: string | null;
   contexto: Contexto | null;
   alertasVistos: Faixa[];
+  /** Versão atual da config de prompt do assessor; null até o servidor responder. */
+  configAtual: number | null;
   /** Envio em andamento no navegador (envio dos anexos e POST da mensagem). */
   enviando: boolean;
   /** Id da mensagem do assessor que iniciou a tarefa em andamento (some se for cancelada). */

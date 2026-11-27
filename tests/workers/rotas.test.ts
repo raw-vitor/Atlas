@@ -4,6 +4,7 @@
  * O consumidor de turno/deck não roda aqui (as mensagens dessas filas só são registradas); a purga roda de verdade pela fila.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { gravarConfigPrompt } from "../../lib/db/configPrompt";
 import { gravarMensagem } from "../../lib/db/mensagens";
 import { chaveConversa } from "../../lib/r2";
 import { criarServidor } from "./helper";
@@ -337,6 +338,27 @@ describe("conversas: criação, leitura e atualização", () => {
     expect(r.corpo.caso.prontidao.pronto).toBe(true);
     expect(r.corpo.caso.fontes[0]).toMatchObject({ nome: "r1.txt", papel: "transcricao" });
     expect(JSON.stringify(r.corpo)).not.toContain("texto da transcrição"); // o texto das fontes nunca vai ao navegador
+  });
+
+  it("GET devolve configAtual (versão da config do usuário autenticado) e configVersoes do caso; caso antigo, sem o campo, vira {}", async () => {
+    const convA = await novaConversa(A);
+    const convB = await novaConversa(B);
+    await t.rpc(convA, "salvarCaso", casoPronto(convA)); // caso salvo antes do recurso: sem configVersoes
+    const antes = (await api(A, "GET", `/api/conversas/${convA}`)).corpo;
+    expect(antes.configAtual).toBe(0);
+    expect(antes.caso.configVersoes).toEqual({});
+
+    const { DB } = await t.worker.getEnv();
+    const idA = await doUsuario(A);
+    expect(await gravarConfigPrompt({ DB } as unknown as CloudflareEnv, idA, 0, { alterados: {}, extras: [] })).toBe(1);
+    expect(await gravarConfigPrompt({ DB } as unknown as CloudflareEnv, idA, 1, { alterados: {}, extras: [] })).toBe(2);
+    await t.rpc(convA, "salvarCaso", { ...casoPronto(convA), configVersoes: { lead: 1, rascunho: 2 } });
+
+    const a = (await api(A, "GET", `/api/conversas/${convA}`)).corpo;
+    expect(a.configAtual).toBe(2);
+    expect(a.caso.configVersoes).toEqual({ lead: 1, rascunho: 2 });
+    expect((await api(B, "GET", `/api/conversas/${convB}`)).corpo.configAtual).toBe(0); // a config de A não vaza para B
+    expect((await api(B, "GET", `/api/conversas/${convA}`)).status).toBe(404);
   });
 });
 
