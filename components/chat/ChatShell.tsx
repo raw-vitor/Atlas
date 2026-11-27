@@ -58,6 +58,10 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [arrastando, setArrastando] = useState(false);
   const [foco, setFoco] = useState(0);
+  // Conversas com cancelamento pedido: o servidor só encerra no próximo batimento (~5 s), então a tela responde já.
+  const [cancelando, setCancelando] = useState<Record<string, true>>({});
+  /** Nova tarefa na conversa: o cancelamento pedido antes não vale para ela. */
+  const limparCancelando = (cid: string) => setCancelando((c) => { if (!c[cid]) return c; const resto = { ...c }; delete resto[cid]; return resto; });
   const profundidade = useRef(0);
   // Instruções do assessor: `personalizada` acende o ponto no ícone; a versão atual vai para as conversas (alerta de versão anterior).
   const [personalizada, setPersonalizada] = useState(false);
@@ -312,6 +316,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
     pendencias.current.set(idCliente, { files, chaves: files.map(() => undefined) });
     const msg: Mensagem = { id: idCliente, idCliente, tipo: "usuario", texto: msgTxt, envio: "enviando",
       anexos: files.map((f) => ({ nome: f.name, tamanho: f.size, status: "pendente", pct: 0 })) };
+    limparCancelando(cid);
     atualizar(cid, (c) => ({ ...c, enviando: true, mensagens: [...c.mensagens, msg] }));
     void processarEnvio(cid, idCliente, msgTxt);
   };
@@ -320,6 +325,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
     const cid = ativaId;
     const m = cache[cid]?.mensagens.find((x) => x.id === msgId);
     if (!m || m.tipo !== "usuario" || estaOcupada(cache[cid])) return;
+    limparCancelando(cid);
     atualizar(cid, (c) => ({ ...c, enviando: true, mensagens: c.mensagens.map((x) => (x.id === msgId && x.tipo === "usuario"
       ? { ...x, envio: "enviando" as const, erro: undefined, anexos: x.anexos.map((a) => (a.status === "erro" ? { ...a, status: "pendente" as const, pct: 0, erro: undefined } : a)) } : x)) }));
     void processarEnvio(cid, msgId, m.texto);
@@ -350,6 +356,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
     const c = cache[cid];
     if (cid === RASCUNHO || !c) return;
     const versao = (c.caso?.decks.length ?? 0) + 1;
+    limparCancelando(cid);
     atualizar(cid, (x) => ({ ...x, enviando: true }));
     try {
       const r = await gerarSlides(cid);
@@ -365,9 +372,13 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
 
   const cancelar = () => {
     const cid = ativaId;
+    if (cancelando[cid]) return;
     const envio = envios.current.get(cid);
-    if (envio) { envio.cancelar = true; if (envio.fase === "upload") envio.ac.abort(); return; }
-    if (cid !== RASCUNHO) void cancelarTarefa(cid).catch(() => {});
+    if (envio) { envio.cancelar = true; if (envio.fase === "upload") envio.ac.abort(); else setCancelando((c) => ({ ...c, [cid]: true })); return; }
+    if (cid === RASCUNHO) return;
+    setCancelando((c) => ({ ...c, [cid]: true }));
+    // Se o pedido falhar, libera o botão para tentar de novo.
+    void cancelarTarefa(cid).catch(() => limparCancelando(cid));
   };
 
   const marcarVisto = (faixa: Faixa) => {
@@ -403,6 +414,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
   const ativa = cache[ativaId] ?? conversaVazia(ativaId);
   const resumo = lista.find((i) => i.id === ativaId);
   const ocupada = estaOcupada(ativa);
+  const cancelandoAtiva = ocupada && !!cancelando[ativaId];
   const ativaTarefa = tarefaAtiva(ativa.tarefa);
   const carregada = ativa.carga === "ok";
   const vazia = ativa.mensagens.length === 0 && carregada;
@@ -498,7 +510,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
               <>
                 <Heading size="2xl" color="profundo">Processando a carteira e a transcrição…</Heading>
                 <ProgressMessage msg={msgProgresso} pct={pctProgresso} fila={ativa.fila} aviso={aviso} />
-                <Button onClick={cancelar} variant="outline" borderColor="profundo" color="profundo" size="sm"><LuSquare /> Cancelar</Button>
+                <Button onClick={cancelar} loading={cancelandoAtiva} loadingText="Cancelando…" variant="outline" borderColor="profundo" color="profundo" size="sm"><LuSquare /> Cancelar</Button>
               </>
             ) : vazia ? (
               <>
@@ -529,7 +541,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
           </Flex>
         )}
         <Composer texto={texto} setTexto={setTexto} arquivos={arquivos} setArquivos={setArquivos} onEnviar={() => enviar()} onCancelar={cancelar}
-          desabilitado={ocupada} foco={foco}
+          desabilitado={ocupada} cancelando={cancelandoAtiva} foco={foco}
           medidor={<ContextoMedidor tokens={ctxPct == null ? undefined : ctxTokens} limite={ctxPct == null ? undefined : ctxLimite}
             estimado={ativa.contexto?.estimado} partes={ativa.contexto?.partes} />}
           alerta={<ContextoAlerta pct={ctxPct} vistos={ativa.alertasVistos} onVisto={marcarVisto} />} />

@@ -6,9 +6,11 @@ import { ACCEPT, EXT_OK, MAX_ARQUIVOS, MAX_ARQUIVO_MB_PADRAO, extensaoDe } from 
 import { AttachmentChip } from "./AttachmentChip";
 
 
-export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onCancelar, desabilitado, medidor, alerta, foco }: {
+export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onCancelar, desabilitado, cancelando = false, medidor, alerta, foco }: {
   texto: string; setTexto: (s: string) => void; arquivos: File[]; setArquivos: (f: File[]) => void;
   onEnviar: () => void; onCancelar: () => void; desabilitado: boolean;
+  /** Cancelamento já pedido: o botão mostra que está cancelando e não aceita outro clique. */
+  cancelando?: boolean;
   /** Medidor de contexto, ao lado do botão de enviar. */
   medidor?: ReactNode;
   /** Faixa de alerta acima do campo. */
@@ -58,7 +60,8 @@ export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onC
           />
           {medidor}
           {desabilitado ? (
-            <IconButton aria-label="Cancelar" rounded="full" bg="profundo" color="neve" _hover={{ bg: "floresta" }} onClick={onCancelar}>
+            <IconButton aria-label={cancelando ? "Cancelando…" : "Cancelar"} rounded="full" bg="profundo" color="neve" _hover={{ bg: "floresta" }}
+              loading={cancelando} onClick={onCancelar}>
               <LuSquare />
             </IconButton>
           ) : (
