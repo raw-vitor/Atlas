@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ESTADOS, interpolar, nivel, type OrbEstado } from "@/components/atlas/orb/estados";
+import { ESTADOS, ESTADOS_ESCURO, interpolar, nivel, type OrbEstado } from "@/components/atlas/orb/estados";
 import { Geometria, geometriaPara, nivelDetalhe } from "@/components/atlas/orb/enxame";
 
 describe("esfera: estados", () => {
@@ -171,5 +171,49 @@ describe("esfera: ampliação de 60%", () => {
     const { m, AMPLIACAO } = await criar(true);
     m.definirAmpliacao(true);
     expect(m.amp).toBe(AMPLIACAO);
+  });
+});
+
+describe("esfera: estilo citoesqueleto", () => {
+  const padrao = new Geometria(nivelDetalhe(140));
+  const g = new Geometria(nivelDetalhe(140, "citoesqueleto"));
+  it("usa k=3: pares únicos e mais arestas que o padrão", () => {
+    const vistos = new Set<number>();
+    for (let k = 0; k < g.arestas.length; k += 2) {
+      const a = g.arestas[k], b = g.arestas[k + 1];
+      expect(a).toBeLessThan(b);
+      vistos.add(a * g.ns + b);
+    }
+    expect(vistos.size).toBe(g.arestas.length / 2);
+    expect(g.arestas.length).toBeGreaterThan(padrao.arestas.length);
+  });
+  it("grau bate com as arestas", () => {
+    const cont = new Uint8Array(g.ns);
+    for (const v of g.arestas) cont[v]++;
+    expect(g.grau).toEqual(cont);
+    expect(padrao.grau.some((v) => v >= 3)).toBe(true);
+  });
+  it("núcleo uniforme fica dentro de [0,22, 0,6]", () => {
+    for (let i = g.ns; i < g.n; i++) {
+      const r = Math.hypot(g.bx[i], g.by[i], g.bz[i]);
+      expect(r).toBeGreaterThanOrEqual(0.22 - 1e-5);
+      expect(r).toBeLessThanOrEqual(0.6 + 1e-5);
+    }
+  });
+  it("a constelação continua sendo gerada", () => {
+    expect(g.nos.length).toBeGreaterThan(0);
+    expect(g.arestasC.length).toBeGreaterThan(0);
+  });
+  it("o cache separa os estilos", () => {
+    expect(geometriaPara(nivelDetalhe(140, "citoesqueleto"))).toBe(geometriaPara(nivelDetalhe(200, "citoesqueleto")));
+    expect(geometriaPara(nivelDetalhe(140, "citoesqueleto"))).not.toBe(geometriaPara(nivelDetalhe(140)));
+  });
+  it("ESTADOS_ESCURO tem a mesma dinâmica de ESTADOS", () => {
+    const cores = ["frente", "tras", "nucleo", "linha", "quente"];
+    for (const e of Object.keys(ESTADOS) as OrbEstado[]) {
+      const sem = (p: object) => Object.fromEntries(Object.entries(p).filter(([k]) => !cores.includes(k)));
+      expect(sem(ESTADOS_ESCURO[e])).toEqual(sem(ESTADOS[e]));
+      expect(ESTADOS_ESCURO[e].frente).not.toEqual(ESTADOS[e].frente);
+    }
   });
 });

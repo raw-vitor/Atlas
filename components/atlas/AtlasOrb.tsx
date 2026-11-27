@@ -19,9 +19,13 @@ interface Props {
   crescimento?: number;
   /** Amplia a esfera até `crescimento` (animado) enquanto for true. */
   ampliar?: boolean;
+  /** Estilo citoesqueleto (esfera em evidência). Padrão false. */
+  destaque?: boolean;
+  /** "escuro" troca para a paleta clara com brilho aditivo (docs/FUNDO_ESCURO_ATLAS.md). Padrão "claro". */
+  fundo?: "claro" | "escuro";
 }
 
-export function AtlasOrb({ tamanho = 40, estado = "parado", animado = true, aura, aoAssentar, crescimento = 1, ampliar = false }: Props) {
+export function AtlasOrb({ tamanho = 40, estado = "parado", animado = true, aura, aoAssentar, crescimento = 1, ampliar = false, destaque = false, fundo = "claro" }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const motor = useRef<MotorEsfera | null>(null);
   const estadoAtual = useRef<OrbEstado>(estado);
@@ -47,7 +51,7 @@ export function AtlasOrb({ tamanho = 40, estado = "parado", animado = true, aura
     if (!el) return;
     const reduz = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const estatico = !animado || reduz;
-    const m = new MotorEsfera(el, { tamanho, estado: estadoAtual.current, estatico, folga: crescimento });
+    const m = new MotorEsfera(el, { tamanho, estado: estadoAtual.current, estatico, folga: crescimento, destaque, fundo });
     motor.current = m;
     m.definirAmpliacao(ampliarRef.current);
     m.aoAssentar = () => aoAssentarRef.current?.();
@@ -65,11 +69,11 @@ export function AtlasOrb({ tamanho = 40, estado = "parado", animado = true, aura
       remover(m);
       motor.current = null;
     };
-  }, [tamanho, animado, crescimento]);
+  }, [tamanho, animado, crescimento, destaque, fundo]);
 
   return (
     <div
-      role="img" aria-label={`Atlas, ${estado}`} className="atlas-orb" data-estado={estado}
+      role="img" aria-label={`Atlas, ${estado}`} className="atlas-orb" data-estado={estado} data-fundo={fundo === "escuro" ? "escuro" : undefined}
       style={{ width: lado, height: lado, ["--orb" as string]: `${tamanho}px` }}
     >
       {comAura && <><span className="atlas-orb-aura" /><span className="atlas-orb-aura atlas-orb-aura-externa" /></>}

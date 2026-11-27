@@ -1,4 +1,4 @@
-import { ESTADOS, interpolar, nivel, type OrbEstado, type ParametrosEstado } from "./estados";
+import { ESTADOS, ESTADOS_ESCURO, interpolar, nivel, type OrbEstado, type ParametrosEstado } from "./estados";
 import { desenharEnxame, dinamicaInicial, geometriaPara, nivelDetalhe, Projecao, type Dinamica, type Geometria } from "./enxame";
 
 const TRANSICAO = 0.2; // constante de tempo (s) da troca de estado, ~600 ms para assentar
@@ -20,6 +20,10 @@ export interface OpcoesMotor {
   estatico?: boolean;
   /** Fator máximo de ampliação reservado no canvas (1 = sem folga). */
   folga?: number;
+  /** Estilo citoesqueleto (k=3, junções, mais profundidade). */
+  destaque?: boolean;
+  /** "escuro": paleta clara com brilho aditivo, para fundo escuro (docs/FUNDO_ESCURO_ATLAS.md). Padrão "claro". */
+  fundo?: "claro" | "escuro";
 }
 
 export class MotorEsfera {
@@ -39,6 +43,8 @@ export class MotorEsfera {
   private params: ParametrosEstado;
   private d: Dinamica = dinamicaInicial();
   private estatico: boolean;
+  private tabela: Record<OrbEstado, ParametrosEstado>;
+  private aditivo: boolean;
   private tamanho: number;
   private dpr = 1;
 
@@ -50,8 +56,10 @@ export class MotorEsfera {
     this.folga = Math.max(1, op.folga ?? 1);
     this.estado = op.estado;
     this.estatico = !!op.estatico;
-    this.params = ESTADOS[op.estado];
-    const nv = nivelDetalhe(op.tamanho);
+    this.aditivo = op.fundo === "escuro";
+    this.tabela = this.aditivo ? ESTADOS_ESCURO : ESTADOS;
+    this.params = this.tabela[op.estado];
+    const nv = nivelDetalhe(op.tamanho, op.destaque ? "citoesqueleto" : "padrao");
     this.detalhe = nv.detalhe;
     this.geo = geometriaPara(nv);
     this.cmAlvo = this.alvoConstel(op.estado);
@@ -71,7 +79,7 @@ export class MotorEsfera {
     if (this.estatico) {
       this.cm = this.cmAlvo;
       if (this.cmAlvo === 0) this.aoAssentar?.();
-      this.params = ESTADOS[e];
+      this.params = this.tabela[e];
       this.d.level = nivel(e, this.t);
       this.desenhar();
     }
@@ -94,7 +102,7 @@ export class MotorEsfera {
   quadro(dt: number) {
     this.t += dt;
     const { d } = this;
-    this.params = interpolar(this.params, ESTADOS[this.estado], 1 - Math.exp(-dt / TRANSICAO));
+    this.params = interpolar(this.params, this.tabela[this.estado], 1 - Math.exp(-dt / TRANSICAO));
     const p = this.params;
     this.molaConstel(dt);
     this.molaAmp(dt);
@@ -156,7 +164,7 @@ export class MotorEsfera {
     desenharEnxame(this.geo, this.proj, {
       ctx, tamanho, lado, amp: this.raioAmp(), d: this.d,
       constel: Math.min(1, Math.max(0, this.cm)), conv: p.conv, wave: p.wave, route: p.route, focus: p.focus, glow: p.glow, scale: p.scale, fixo: p.fixo,
-      frente: p.frente, tras: p.tras, nucleo: p.nucleo, linha: p.linha, quente: p.quente,
+      frente: p.frente, tras: p.tras, nucleo: p.nucleo, linha: p.linha, quente: p.quente, aditivo: this.aditivo,
     }, this.detalhe);
   }
 }
