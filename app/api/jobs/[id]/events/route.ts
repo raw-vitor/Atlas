@@ -17,7 +17,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/jobs/[id]/events
       const enviar = (e: Evento) => {
         if (encerrado) return;
         ctrl.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
-        if (e.status === "pronto" || e.status === "erro") fim();
+        if (e.status === "pronto" || e.status === "erro" || e.status === "cancelado") fim();
       };
       const batida = setInterval(() => !encerrado && ctrl.enqueue(enc.encode(": ping\n\n")), 15000);
       const fim = () => { if (encerrado) return; encerrado = true; clearInterval(batida); j.ouvintes.delete(enviar); try { ctrl.close(); } catch {} };

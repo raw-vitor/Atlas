@@ -1,6 +1,7 @@
 import { autorizado, negado } from "@/lib/auth";
 import { criarChatJson, novoUso, type Uso } from "@/lib/bedrock";
-import { aplicarAjustes, eDerivada, hashTexto, obterCaso, publicoCaso, rebaixarCarteirasSubstituiveis, removerDerivada, temCarteiraReal, temExtrato, tocar, valoresParaCarteira, type Caso, type Fonte } from "@/lib/caso";
+import { CanceladoError, checarCancelado } from "@/lib/cancelamento";
+import { aplicarAjustes, copiarCaso, restaurarCaso, eDerivada, hashTexto, obterCaso, publicoCaso, rebaixarCarteirasSubstituiveis, removerDerivada, temCarteiraReal, temExtrato, tocar, valoresParaCarteira, type Caso, type Fonte } from "@/lib/caso";
 import { interpretarInstrucao, MAX_INSTRUCAO } from "@/lib/instrucao";
 import { interpretar } from "@/lib/chat";
 import { config } from "@/lib/config";
@@ -54,9 +55,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
   for (const [k, v] of form.entries())
     if (k.startsWith("papel:") && (v === "carteira" || v === "transcricao")) declarados[k.slice(6)] = v;
 
+  const copia = copiarCaso(caso); // se o assessor cancelar, a mensagem some do caso como se não tivesse sido enviada
   caso.ocupado = true;
   const uso = novoUso();
-  return respostaSSE(async (enviar) => {
+  return respostaSSE(async (enviar, signal) => {
     try {
       // Mensagem curta sobre um caso aberto: o LLM diz se é um pedido ("usar a transcrição") ou um dado do lead.
       const curta = msg.trim().length > 0 && msg.trim().length <= MAX_INSTRUCAO;
@@ -89,6 +91,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
         }
       }
 
+      checarCancelado();
       const bufs = await Promise.all(arquivos.map(async (f) => ({ nome: f.name, buf: Buffer.from(await f.arrayBuffer()) })));
       let it;
       try { it = await interpretar(msg, bufs, uso, declarados); }
@@ -103,7 +106,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
 
       const novos: Fonte[] = [];
       const ignorados = [...it.ignorados];
-      const avisosTriagem = it.avisos.map((a) => `Atenção: ${a}`).join("\n");
+      const avisosTriagem = it.avisos.map((a) => a.charAt(0).toUpperCase() + a.slice(1));
       const origem = (a: { nome: string }) => (declarados[a.nome] ? "usuario" : "automatico");
       for (const [papel, anexos] of [["carteira", it.carteiras], ["transcricao", it.transcricoes], ["contexto", it.contextos]] as const)
         for (const a of anexos) {
@@ -128,8 +131,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
       tocar(caso);
 
       if (!novos.length) {
-        const base = it.pergunta && !caso.fontes.length ? it.pergunta : resumoDoCaso(caso, []);
-        enviar("texto", { texto: base + (avisosTriagem ? "\n" + avisosTriagem : "") + (ignorados.length ? `\nNão usei: ${ignorados.join("; ")}.` : "") });
+        const base = it.pergunta && !caso.fontes.length ? it.pergunta : resumoDoCaso(caso, [], avisosTriagem);
+        enviar("texto", { texto: base + (ignorados.length ? `\nNão usei: ${ignorados.join("; ")}.` : "") });
         enviar("caso", publicoCaso(caso));
         enviar("fim", {});
         return;
@@ -138,10 +141,14 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
       enviar("atividade", { pct: 5, msg: "Lendo os arquivos" });
       await leitura(caso, criarChatJson(uso), (_etapa, pct, m) => enviar("atividade", { pct, msg: m }));
       tocar(caso);
-      const resumo = resumoDoCaso(caso, novos.map((f) => f.nome));
-      enviar("texto", { texto: resumo + (avisosTriagem ? "\n" + avisosTriagem : "") + nota + (ignorados.length ? `\nNão usei: ${ignorados.join("; ")}.` : "") });
+      const resumo = resumoDoCaso(caso, novos.map((f) => f.nome), avisosTriagem);
+      enviar("texto", { texto: resumo + nota + (ignorados.length ? `\nNão usei: ${ignorados.join("; ")}.` : "") });
       enviar("caso", publicoCaso(caso));
+      checarCancelado();
       enviar("fim", { tokens: uso });
+    } catch (e) {
+      if (e instanceof CanceladoError || signal.aborted) restaurarCaso(caso, copia);
+      throw e;
     } finally { caso.ocupado = false; }
-  });
+  }, req.signal);
 }

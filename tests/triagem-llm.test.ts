@@ -37,11 +37,11 @@ describe("4.6 triagem por LLM", () => {
     expect(r.detalhes["arquivo2.csv"]).toMatchObject({ tipo: "extrato", data: "06/11/2026", papel: "carteira" });
   });
 
-  it("LLM contra a contagem: vale o LLM e o resumo avisa", async () => {
+  it("LLM contra a contagem: vale o LLM e não polui o chat com aviso", async () => {
     const r = await interpretar("R2", [{ nome: "arquivo1.txt", buf: docx }, { nome: "arquivo2.csv", buf: csv }], uso, {},
       fake({ "arquivo1.txt": { tipo: "extrato", contem: ["posicao_carteira"], motivo: "tem tabela" } }));
     expect(r.carteiras.map((a) => a.nome)).toContain("arquivo1.txt");
-    expect(r.avisos.some((a) => a.includes('li "arquivo1.txt" como carteira') && a.includes("contagem de sinais indicava transcrição"))).toBe(true);
+    expect(r.avisos.some((a) => a.includes("contagem de sinais"))).toBe(false);
   });
 
   it("confiança baixa do LLM é ignorada: fica a contagem", async () => {
@@ -134,7 +134,7 @@ describe("4.6 contexto no lead e no caso", () => {
   it("resumo e estado público mostram o que o Atlas entendeu", () => {
     const caso = casoAvulso();
     caso.fontes = [{ nome: "deck.pptx", papel: "contexto", tipo: "deck_anterior", origemPapel: "automatico", texto: "x", hash: "a" }];
-    expect(resumoDoCaso(caso, ["deck.pptx"])).toContain("Li deck.pptx (deck anterior, usado como contexto do lead).");
+    expect(resumoDoCaso(caso, ["deck.pptx"])).toContain("Li deck.pptx (deck anterior, usado como contexto do lead)");
     expect(publicoCaso(caso).fontes[0]).toMatchObject({ papel: "contexto", tipo: "deck_anterior" });
   });
 });

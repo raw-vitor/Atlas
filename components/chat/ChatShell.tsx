@@ -1,7 +1,7 @@
 "use client";
 import { Box, Button, Flex, Heading, IconButton, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LuMenu, LuPlus } from "react-icons/lu";
+import { LuMenu, LuPlus, LuSquare } from "react-icons/lu";
 import { ProgressMessage } from "./ProgressMessage";
 import { AtlasOrb } from "@/components/atlas/AtlasOrb";
 import { Composer } from "./Composer";
@@ -21,6 +21,8 @@ export function ChatShell() {
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [arrastando, setArrastando] = useState(false);
   const fontes = useRef(new Map<string, EventSource>());
+  // O que dá para cancelar em cada conversa: o envio em andamento (AbortController) ou o job de geração do deck.
+  const cancelaveis = useRef(new Map<string, { ac?: AbortController; jobId?: string }>());
   const profundidade = useRef(0);
 
   const ativa = conversas.find((c) => c.id === ativaId) ?? conversas[0];
@@ -51,9 +53,17 @@ export function ChatShell() {
         const r = e.resultado;
         atualizar(cid, (c) => ({ ...c, ocupada: false, titulo: `R2 · ${r.resumo.lead}`,
           mensagens: c.mensagens.map((m): Mensagem => (m.id === msgId ? { id: msgId, tipo: "resultado", jobId, resultado: r } : m)) }));
+        cancelaveis.current.delete(cid);
+        void refrescar(cid);
+        fechar();
+      } else if (e.status === "cancelado") {
+        cancelaveis.current.delete(cid);
+        atualizar(cid, (c) => ({ ...c, ocupada: false,
+          mensagens: c.mensagens.map((m): Mensagem => (m.id === msgId ? { id: msgId, tipo: "atlas", texto: "Geração dos slides cancelada." } : m)) }));
         void refrescar(cid);
         fechar();
       } else if (e.status === "erro") {
+        cancelaveis.current.delete(cid);
         atualizar(cid, (c) => ({ ...c, ocupada: false,
           mensagens: c.mensagens.map((m): Mensagem => (m.id === msgId ? { id: msgId, tipo: "atlas", erro: true, texto: `Não consegui terminar o deck.\n${e.erro}` } : m)) }));
         void refrescar(cid);
@@ -95,13 +105,15 @@ export function ChatShell() {
     const msgTxt = doBotao ? forcado : texto.trim();
     const anexos = doBotao ? [] : arquivos;
     if (!doBotao) { setTexto(""); setArquivos([]); }
-    const pid = uid();
+    const pid = uid(), idUsuario = uid();
+    const ac = new AbortController();
+    cancelaveis.current.set(cid, { ac });
     atualizar(cid, (c) => ({ ...c, ocupada: true,
-      mensagens: [...c.mensagens, { id: uid(), tipo: "usuario", texto: msgTxt, anexos: anexos.map((f) => f.name) }] }));
+      mensagens: [...c.mensagens, { id: idUsuario, tipo: "usuario", texto: msgTxt, anexos: anexos.map((f) => f.name) }] }));
     try {
       let casoId = casoAtivoId;
       if (!casoId) {
-        const rc = await chamar("/api/conversas", { method: "POST" });
+        const rc = await chamar("/api/conversas", { method: "POST", signal: ac.signal });
         if (!rc.ok) return falhar(cid, "Não consegui abrir a conversa. Tente de novo.");
         const j = await rc.json(); casoId = j.id as string; casoIds.current.set(cid, casoId);
         atualizar(cid, (c) => ({ ...c, caso: j.caso }));
@@ -109,7 +121,7 @@ export function ChatShell() {
       const fd = new FormData();
       fd.set("message", msgTxt);
       anexos.forEach((f) => fd.append("files", f));
-      const r = await chamar(`/api/conversas/${casoId}/mensagens`, { method: "POST", body: fd });
+      const r = await chamar(`/api/conversas/${casoId}/mensagens`, { method: "POST", body: fd, signal: ac.signal });
       if (!r.ok || !r.body) {
         const j = await r.json().catch(() => ({}));
         return falhar(cid, r.status === 404 ? "Esta conversa expirou no servidor. Abra uma nova conversa e envie os arquivos de novo." : (j.erro ?? "Algo deu errado."));
@@ -128,9 +140,17 @@ export function ChatShell() {
       });
       atualizar(cid, (c) => ({ ...c, ocupada: false, mensagens: semProgresso(c) }));
     } catch {
-      falhar(cid, "Não consegui falar com o servidor. Tente de novo.", pid);
+      if (ac.signal.aborted) {
+        // Cancelado: a mensagem some da conversa (o servidor também desfaz) e o que o assessor escreveu volta para o campo.
+        atualizar(cid, (c) => ({ ...c, ocupada: false, mensagens: [...c.mensagens.filter((m) => m.id !== idUsuario && m.id !== pid),
+          { id: uid(), tipo: "atlas", texto: "Cancelado. Nada foi alterado na conversa." }] }));
+        if (!doBotao) { setTexto((t) => t || msgTxt); setArquivos((a) => (a.length ? a : anexos)); }
+        void refrescar(cid);
+      } else falhar(cid, "Não consegui falar com o servidor. Tente de novo.", pid);
+    } finally {
+      if (cancelaveis.current.get(cid)?.ac === ac) cancelaveis.current.delete(cid);
     }
-  }, [ativa.id, casoAtivoId, texto, arquivos, atualizar, chamar, falhar]);
+  }, [ativa.id, casoAtivoId, texto, arquivos, atualizar, chamar, falhar, refrescar]);
 
   const gerar = useCallback(async () => {
     const cid = ativa.id, casoId = casoAtivoId;
@@ -144,9 +164,16 @@ export function ChatShell() {
       atualizar(cid, (c) => ({ ...c, caso: j.caso, mensagens: [...c.mensagens,
         { id: uid(), tipo: "atlas", texto: `Vou montar os slides (versão ${j.versao}).${j.refazRascunho ? " Primeiro escrevo o rascunho, o que leva cerca de 1 minuto." : ""}` },
         { id: pid, tipo: "progresso", jobId: j.jobId, evento: null }] }));
+      cancelaveis.current.set(cid, { jobId: j.jobId });
       acompanhar(cid, j.jobId, pid);
     } catch { falhar(cid, "Não consegui falar com o servidor. Tente de novo."); }
   }, [ativa.id, casoAtivoId, atualizar, chamar, falhar, acompanhar]);
+
+  const cancelar = useCallback(() => {
+    const c = cancelaveis.current.get(ativa.id);
+    if (c?.ac) c.ac.abort();
+    else if (c?.jobId) void chamar(`/api/jobs/${c.jobId}/cancelar`, { method: "POST" }).catch(() => {});
+  }, [ativa.id, chamar]);
 
   const novaConversa = () => { const c = nova(); setConversas((cs) => [c, ...cs]); setAtivaId(c.id); };
   const vazia = ativa.mensagens.length === 0;
@@ -154,6 +181,16 @@ export function ChatShell() {
   const processandoPrimeira = ativa.ocupada
     && ativa.mensagens.some((m) => m.tipo === "usuario" && m.anexos.length > 0)
     && !ativa.mensagens.some((m) => m.tipo === "resultado");
+  // Ao terminar, a esfera grande fica na tela até voltar à forma normal (aoAssentar) e só então some a tela central.
+  const [segurando, setSegurando] = useState(false);
+  const [antes, setAntes] = useState(false);
+  if (antes !== processandoPrimeira) { setAntes(processandoPrimeira); if (processandoPrimeira) setSegurando(true); }
+  useEffect(() => {
+    if (processandoPrimeira || !segurando) return;
+    const t = setTimeout(() => setSegurando(false), 3000); // rede de segurança se a esfera não avisar
+    return () => clearTimeout(t);
+  }, [processandoPrimeira, segurando]);
+  const central = vazia || processandoPrimeira || segurando;
   const progresso = ativa.mensagens.findLast((m) => m.tipo === "progresso");
 
   return (
@@ -179,17 +216,22 @@ export function ChatShell() {
           <IconButton aria-label="Alternar lista de conversas" variant="ghost" onClick={() => setMenu((m) => !m)} display={{ base: "none", md: "inline-flex" }}><LuMenu /></IconButton>
           {!vazia && <Text fontWeight="medium" truncate>{ativa.titulo}</Text>}
         </Flex>
-        {processandoPrimeira ? (
+        {central ? (
+          // Uma única esfera na tela vazia, no processamento e na volta: assim ela não é recriada e a transição é contínua.
           <Flex flex="1" direction="column" align="center" justify="center" gap="5" px="4" textAlign="center">
-            <AtlasOrb tamanho={140} estado="pensando" />
-            <Heading size="2xl" color="profundo">Processando a carteira e a transcrição…</Heading>
-            <ProgressMessage evento={progresso?.tipo === "progresso" ? progresso.evento : null} />
-          </Flex>
-        ) : vazia ? (
-          <Flex flex="1" direction="column" align="center" justify="center" gap="5" px="4" textAlign="center">
-            <AtlasOrb tamanho={140} estado={ativa.ocupada ? "pensando" : "parado"} />
-            <Heading size="2xl" color="profundo">Olá, sou o Atlas.</Heading>
-            <Text color="floresta" maxW="440px">Anexe a carteira e a transcrição da R1. Eu leio os dois e, quando você pedir, monto o deck da R2 em PPTX e PDF.</Text>
+            <AtlasOrb tamanho={140} crescimento={1.6} ampliar={processandoPrimeira} estado={ativa.ocupada ? "pensando" : "parado"} aoAssentar={() => setSegurando(false)} />
+            {processandoPrimeira ? (
+              <>
+                <Heading size="2xl" color="profundo">Processando a carteira e a transcrição…</Heading>
+                <ProgressMessage evento={progresso?.tipo === "progresso" ? progresso.evento : null} />
+                <Button onClick={cancelar} variant="outline" borderColor="profundo" color="profundo" size="sm"><LuSquare /> Cancelar</Button>
+              </>
+            ) : vazia ? (
+              <>
+                <Heading size="2xl" color="profundo">Olá, sou o Atlas.</Heading>
+                <Text color="floresta" maxW="440px">Anexe a carteira e a transcrição da R1. Eu leio os dois e, quando você pedir, monto o deck da R2 em PPTX e PDF.</Text>
+              </>
+            ) : null}
           </Flex>
         ) : (
           <Box flex="1" overflowY="auto"><MessageList mensagens={ativa.mensagens} /></Box>
@@ -210,7 +252,7 @@ export function ChatShell() {
             {ativa.caso.decks.length === 0 && <Text fontSize="sm" color="profundo">Os slides só saem quando você pedir.</Text>}
           </Flex>
         )}
-        <Composer texto={texto} setTexto={setTexto} arquivos={arquivos} setArquivos={setArquivos} onEnviar={enviar} desabilitado={ativa.ocupada} />
+        <Composer texto={texto} setTexto={setTexto} arquivos={arquivos} setArquivos={setArquivos} onEnviar={enviar} onCancelar={cancelar} desabilitado={ativa.ocupada} />
         {arrastando && (
           <Flex position="absolute" inset="0" bg="rgba(0,64,49,.88)" color="neve" align="center" justify="center" zIndex="10" pointerEvents="none" rounded="xl" m="2" borderWidth="2px" borderStyle="dashed" borderColor="menta">
             <Heading size="xl">Solte aqui a carteira e a transcrição</Heading>

@@ -1,4 +1,5 @@
 import type { Caso } from "./caso";
+import { PENDENCIAS_FIXAS } from "./validate";
 import { avisosDosDados, prontidao, valoresParaCarteira } from "./caso";
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -8,27 +9,40 @@ const rotuloPapel = (p: string) => (p === "carteira" ? "carteira" : p === "conte
 const rotulo = (f: { papel: string; tipo?: string }) =>
   f.tipo && TIPOS[f.tipo] ? `${TIPOS[f.tipo]}, usado como ${rotuloPapel(f.papel)}${f.papel === "contexto" ? " do lead" : ""}` : rotuloPapel(f.papel);
 
-/** Texto fixo da Fase 1: o que o Atlas entendeu e o que falta. Sem LLM. */
-export function resumoDoCaso(c: Caso, novos: string[]): string {
+/** Texto fixo da Fase 1: o que o Atlas entendeu e o que falta. Sem LLM. Curto, em bullets. */
+export function resumoDoCaso(c: Caso, novos: string[], avisosTriagem: string[] = []): string {
   const l: string[] = [];
-  if (novos.length) l.push(`Li ${novos.map((n) => { const f = c.fontes.find((x) => x.nome === n)!; return `${n} (${rotulo(f)})`; }).join(", ")}.`);
-  if (c.analise) l.push(`Carteira: ${c.analise.n_ativos} ativos, total ${brl(c.analise.total)}.`);
+  const lidos = novos.map((n) => ({ n, f: c.fontes.find((x) => x.nome === n) })).filter((x) => x.f);
+  if (lidos.length === 1) l.push(`Li ${lidos[0].n} (${rotulo(lidos[0].f!)}).`);
+  else if (lidos.length) l.push(`Li ${lidos.length} arquivos:\n${lidos.map((x) => `- ${x.n}: ${rotulo(x.f!)}`).join("\n")}`);
+
+  const info: string[] = [];
+  if (c.analise) info.push(`- Carteira: ${c.analise.n_ativos} ativos, ${brl(c.analise.total)}`);
   if (c.lead) {
-    const partes = [c.lead.primeiro_nome && `lead ${c.lead.primeiro_nome}`, c.lead.perfil && `perfil ${c.lead.perfil}`,
-      c.lead.objetivos.length ? `objetivos: ${c.lead.objetivos.join("; ")}` : ""].filter(Boolean);
-    if (partes.length) l.push(`Lead: ${partes.join(", ")}.`);
+    const p = [c.lead.primeiro_nome && `Lead: ${c.lead.primeiro_nome}`, c.lead.perfil].filter(Boolean).join(", ");
+    if (p) info.push(`- ${p}`);
+    const [primeiro, ...resto] = c.lead.objetivos;
+    if (primeiro) info.push(`- Objetivo: ${primeiro}${resto.length ? ` (+${resto.length} no painel)` : ""}`);
   }
-  for (const a of c.avisosLeitura) l.push(`Atenção: ${a}`);
-  for (const p of c.pendenciasCarteira) l.push(`Atenção: ${p}`);
+  if (info.length) l.push(info.join("\n"));
+
+  // Só o que o assessor precisa resolver. As pendências fixas do método ficam no painel do deck.
   const dados = avisosDosDados(c);
-  if (dados.avisos.length) l.push(`Avisos do método:\n${dados.avisos.map((a) => `- ${a}`).join("\n")}`);
-  if (dados.pendencias.length) l.push(`Pendências a validar antes da R2:\n${dados.pendencias.map((a) => `- ${a}`).join("\n")}`);
+  const citacoes = dados.avisos.length;
+  const fixas = new Set(PENDENCIAS_FIXAS);
+  const antes = [
+    ...c.avisosLeitura, ...c.pendenciasCarteira, ...avisosTriagem,
+    ...dados.pendencias.filter((p) => !fixas.has(p)).map((p) => p.charAt(0).toUpperCase() + p.slice(1)),
+    ...(citacoes ? [`${citacoes} ${citacoes === 1 ? "citação do lead não bate" : "citações do lead não batem"} com a transcrição`] : []),
+  ];
+  if (antes.length) l.push(`Antes da R2:\n${antes.map((a) => `- ${a}`).join("\n")}`);
+
   const pr = prontidao(c);
   if (pr.pronto) {
     const padrao = [!c.assessor && "assessor", !c.dataR2 && "data da R2"].filter(Boolean);
-    l.push(`Tenho o necessário para montar os slides. Use o botão "Gerar slides" quando quiser.${padrao.length ? ` Você não informou ${padrao.join(" e ")}; uso o padrão.` : ""}`);
+    l.push(`Pronto para gerar os slides.${padrao.length ? ` ${(padrao.join(" e ") as string).replace(/^./, (m) => m.toUpperCase())} ${padrao.length > 1 ? "ficaram" : "ficou"} no padrão.` : ""}`);
   } else l.push(pedido(c, pr));
-  return l.join("\n");
+  return l.join("\n\n");
 }
 
 const OPCAO_ENVIAR = "Enviar a carteira: anexe o extrato (planilha, PDF ou print) ou cole a posição aqui no chat.";

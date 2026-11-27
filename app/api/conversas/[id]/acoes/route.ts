@@ -35,6 +35,6 @@ export async function POST(req: Request, ctx: RouteContext<"/api/conversas/[id]/
       caso.decks.push({ jobId: job.id, versao: caso.decks.length + 1, criadoEm: Date.now() });
       return r;
     } finally { caso.ocupado = false; tocar(caso); }
-  });
+  }, () => { caso.ocupado = false; tocar(caso); });
   return Response.json({ jobId: job.id, versao: caso.decks.length + 1, refazRascunho, caso: publicoCaso(caso) });
 }

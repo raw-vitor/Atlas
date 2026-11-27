@@ -1,3 +1,4 @@
+import { CanceladoError, sinalAtual } from "./cancelamento";
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config";
@@ -38,11 +39,17 @@ export function mensagem422(corpo: string): string | null {
   return `O serviço do deck recusou o rascunho: ${campos.join("; ")}. Provável serviço desatualizado. Avise o time.`;
 }
 
+const sinalDeck = () => { const ext = sinalAtual(); const t = AbortSignal.timeout(300_000); return ext ? AbortSignal.any([ext, t]) : t; };
+
 export async function renderizar(payload: object, formato: "pptx" | "pdf", destino: string): Promise<void> {
-  const r = await fetch(`${config.deckServiceUrl}/render`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...payload, formato }), signal: AbortSignal.timeout(300_000),
-  });
+  const ext = sinalAtual();
+  let r: Response;
+  try {
+    r = await fetch(`${config.deckServiceUrl}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, formato }), signal: sinalDeck(),
+    });
+  } catch (e) { if (ext?.aborted) throw new CanceladoError(); throw e; }
   if (!r.ok) {
     const corpo = await r.text();
     if (r.status === 422) {
@@ -52,7 +59,9 @@ export async function renderizar(payload: object, formato: "pptx" | "pdf", desti
     }
     throw new Error(`deck-service ${r.status}: ${corpo.slice(0, 300)}`);
   }
-  fs.writeFileSync(path.join(destino), Buffer.from(await r.arrayBuffer()));
+  let corpo: Buffer;
+  try { corpo = Buffer.from(await r.arrayBuffer()); } catch (e) { if (ext?.aborted) throw new CanceladoError(); throw e; }
+  fs.writeFileSync(path.join(destino), corpo);
 }
 
 /** Confere se o serviço responde e se usa o mesmo schema que o Atlas (hash exportado por export_schemas.py). */

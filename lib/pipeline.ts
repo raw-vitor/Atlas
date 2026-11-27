@@ -66,9 +66,10 @@ export function slug(s: string): string {
 
 
 /** Rede de segurança: a leitura achou o conteúdo de um papel no arquivo do outro. */
-export function avisosDePapel(carts: { nome: string; texto: string; origemPapel: string }[], trs: { nome: string; texto: string; origemPapel: string }[]): string[] {
+export function avisosDePapel(carts: { nome: string; texto: string; origemPapel: string; tipo?: string }[], trs: { nome: string; texto: string; origemPapel: string; tipo?: string }[]): string[] {
   const out: string[] = [];
-  const confiavel = (f: { origemPapel: string }) => !["usuario", "declarado", "transcricao"].includes(f.origemPapel);
+  // Arquivo que a triagem por LLM já identificou (tipo preenchido) não passa pela contagem de sinais.
+  const confiavel = (f: { origemPapel: string; tipo?: string }) => !f.tipo && !["usuario", "declarado", "transcricao"].includes(f.origemPapel);
   for (const f of carts.filter(confiavel)) {
     const c = classificarPorConteudo(f.texto);
     if (c.papel === "transcricao" && c.confianca >= CONFIANCA_MINIMA)

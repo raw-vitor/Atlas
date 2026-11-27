@@ -66,6 +66,13 @@ export function novoCaso(): Caso {
 }
 
 export const obterCaso = (id: string) => (/^[0-9a-f]{32}$/.test(id) ? casos.get(id) : undefined);
+/** Cópia do estado para desfazer uma mensagem cancelada. */
+export const copiarCaso = (c: Caso): Caso => structuredClone(c);
+/** Devolve o caso ao estado da cópia, mantendo o mesmo objeto (ele está no mapa de casos). */
+export function restaurarCaso(c: Caso, copia: Caso) {
+  for (const k of Object.keys(c)) if (!(k in copia)) delete (c as unknown as Record<string, unknown>)[k];
+  Object.assign(c, copia);
+}
 export const tocar = (c: Caso) => { c.atualizado = Date.now(); };
 export const hashTexto = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 

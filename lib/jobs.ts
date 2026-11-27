@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { config } from "./config";
+import { CanceladoError, comCancelamento } from "./cancelamento";
 
 export interface Evento { id: string; status: string; etapa: string; pct: number; msg: string; erro: string; resultado: Resultado | null }
 export interface Resultado {
@@ -13,9 +14,10 @@ export interface Resultado {
   tokens: { chamadas: number; entrada: number; saida: number };
 }
 export interface Job {
-  id: string; dir: string; status: "na fila" | "rodando" | "pronto" | "erro"; etapa: string; pct: number; msg: string;
+  id: string; dir: string; status: "na fila" | "rodando" | "pronto" | "erro" | "cancelado"; etapa: string; pct: number; msg: string;
   erro: string; resultado: Resultado | null; criado: number; eventos: Evento[];
   ouvintes: Set<(e: Evento) => void>;
+  ac: AbortController;
 }
 export type Progress = (etapa: string, pct: number, msg: string) => void;
 
@@ -27,7 +29,7 @@ export const publico = (j: Job): Evento => ({ id: j.id, status: j.status, etapa:
 export function limpar() {
   const agora = Date.now();
   for (const [id, j] of jobs) {
-    if (agora - j.criado > config.jobTtlMin * 60_000 && (j.status === "pronto" || j.status === "erro")) {
+    if (agora - j.criado > config.jobTtlMin * 60_000 && (j.status === "pronto" || j.status === "erro" || j.status === "cancelado")) {
       fs.rmSync(j.dir, { recursive: true, force: true });
       jobs.delete(id);
     }
@@ -39,12 +41,19 @@ export function novo(): Job {
   const id = crypto.randomBytes(8).toString("hex");
   const dir = path.join(config.workDir, id);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const j: Job = { id, dir, status: "na fila", etapa: "", pct: 0, msg: "Na fila", erro: "", resultado: null, criado: Date.now(), eventos: [], ouvintes: new Set() };
+  const j: Job = { id, dir, status: "na fila", etapa: "", pct: 0, msg: "Na fila", erro: "", resultado: null, criado: Date.now(), eventos: [], ouvintes: new Set(), ac: new AbortController() };
   jobs.set(id, j);
   return j;
 }
 
 export const obter = (id: string) => jobs.get(id);
+
+/** Pede o cancelamento. Devolve false se o job já terminou (pronto, erro ou cancelado). */
+export function cancelar(j: Job): boolean {
+  if (j.status === "pronto" || j.status === "erro" || j.status === "cancelado") return false;
+  j.ac.abort();
+  return true;
+}
 
 function emitir(j: Job) {
   const e = publico(j);
@@ -58,16 +67,19 @@ const espera: (() => void)[] = [];
 async function vaga() { if (ativos >= 3) await new Promise<void>((r) => espera.push(r)); ativos++; }
 function liberar() { ativos--; espera.shift()?.(); }
 
-export function submeter(j: Job, fn: (p: Progress) => Promise<Resultado>) {
+/** `aoDescartar` roda se o job for cancelado antes de começar (fn nunca chega a rodar), para soltar o que `fn` soltaria no finally. */
+export function submeter(j: Job, fn: (p: Progress) => Promise<Resultado>, aoDescartar?: () => void) {
   emitir(j);
   void (async () => {
     await vaga();
+    if (j.ac.signal.aborted) { j.status = "cancelado"; j.msg = "Cancelado"; aoDescartar?.(); liberar(); emitir(j); return; }
     j.status = "rodando";
-    const progress: Progress = (etapa, pct, msg) => { j.etapa = etapa; j.pct = pct; j.msg = msg; emitir(j); };
+    const progress: Progress = (etapa, pct, msg) => { if (j.ac.signal.aborted) return; j.etapa = etapa; j.pct = pct; j.msg = msg; emitir(j); };
     try {
-      j.resultado = await fn(progress);
+      j.resultado = await comCancelamento(j.ac.signal, () => fn(progress));
       j.status = "pronto";
     } catch (e) {
+      if (e instanceof CanceladoError || j.ac.signal.aborted) { j.status = "cancelado"; j.msg = "Cancelado"; j.resultado = null; return; }
       j.status = "erro";
       j.erro = e instanceof Error ? e.message : String(e); // sem conteúdo do lead no log
       console.error(`[atlas] job ${j.id} falhou: ${j.erro.slice(0, 300)}`);

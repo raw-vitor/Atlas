@@ -1,14 +1,14 @@
 "use client";
 import { Box, Flex, IconButton, Text, Textarea } from "@chakra-ui/react";
 import { useRef, useState } from "react";
-import { LuArrowUp, LuPaperclip } from "react-icons/lu";
+import { LuArrowUp, LuPaperclip, LuSquare } from "react-icons/lu";
 import { ACCEPT, EXT_OK, MAX_ARQUIVOS, MAX_ARQUIVO_MB_PADRAO, extensaoDe } from "@/lib/formatos";
 import { AttachmentChip } from "./AttachmentChip";
 
 
-export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, desabilitado }: {
+export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onCancelar, desabilitado }: {
   texto: string; setTexto: (s: string) => void; arquivos: File[]; setArquivos: (f: File[]) => void;
-  onEnviar: () => void; desabilitado: boolean;
+  onEnviar: () => void; onCancelar: () => void; desabilitado: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [recusas, setRecusas] = useState<string[]>([]);
@@ -46,9 +46,15 @@ export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, des
             autoresize maxH="10lh" rows={1} border="none" outline="none" resize="none" _focusVisible={{ outline: "none", boxShadow: "none" }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (podeEnviar) onEnviar(); } }}
           />
-          <IconButton aria-label="Enviar" rounded="full" bg="profundo" color="neve" _hover={{ bg: "floresta" }} disabled={!podeEnviar} onClick={onEnviar}>
-            <LuArrowUp />
-          </IconButton>
+          {desabilitado ? (
+            <IconButton aria-label="Cancelar" rounded="full" bg="profundo" color="neve" _hover={{ bg: "floresta" }} onClick={onCancelar}>
+              <LuSquare />
+            </IconButton>
+          ) : (
+            <IconButton aria-label="Enviar" rounded="full" bg="profundo" color="neve" _hover={{ bg: "floresta" }} disabled={!podeEnviar} onClick={onEnviar}>
+              <LuArrowUp />
+            </IconButton>
+          )}
         </Flex>
       </Box>
     </Box>

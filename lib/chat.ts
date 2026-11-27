@@ -1,5 +1,6 @@
 /** Interpreta a mensagem do assessor e os anexos: quem é a carteira, quem é a transcrição, assessor e data da R2. */
 import { perguntarJson, type Uso } from "./bedrock";
+import { CanceladoError } from "./cancelamento";
 import { createHash } from "node:crypto";
 import { toText } from "./ingest";
 import { EXT_OK, FORMATOS, extensaoDe } from "./formatos";
@@ -93,7 +94,7 @@ export async function interpretar(
     if (original) { base.ignorados.push(`${f.nome} (cópia de ${original})`); continue; }
     vistos.set(hash, f.nome);
     try { anexos.push({ ...f, texto: await toText(f.nome, f.buf, uso) }); }
-    catch (e) { base.ignorados.push(`${f.nome} (${e instanceof Error ? e.message : "não consegui ler"})`); }
+    catch (e) { if (e instanceof CanceladoError) throw e; base.ignorados.push(`${f.nome} (${e instanceof Error ? e.message : "não consegui ler"})`); }
   }
 
   // Escada: papel declarado > conteúdo > nome > extensão.
@@ -126,8 +127,6 @@ export async function interpretar(
       const papel = papelDe(c);
       decididos.add(a); tipoDe.set(a, c); papelFinal.set(a, papel);
       if (papel !== "contexto") {
-        if (papel !== antes.papel)
-          base.avisos.push(`li "${a.nome}" como ${papel === "carteira" ? "carteira" : "transcrição"} (${c.motivo || "pelo conteúdo"}), mas a contagem de sinais indicava ${nomePapel(antes.papel)}.`);
         tri.set(a, { ...antes, papel, confianca: c.confianca, sinais: [...antes.sinais, "llm"], incerto: false });
       }
     });
@@ -154,7 +153,7 @@ export async function interpretar(
           papelFinal.set(a, c.papel);
         }
       }
-    } catch { /* mantém o palpite da extensão */ }
+    } catch (e) { if (e instanceof CanceladoError) throw e; /* mantém o palpite da extensão */ }
   }
 
   const doPapel = (p: PapelTriado) => anexos.filter((a) => papelFinal.get(a) === p);

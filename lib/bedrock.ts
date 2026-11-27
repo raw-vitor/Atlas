@@ -5,12 +5,12 @@
  */
 import { BedrockRuntimeClient, ConverseCommand, type ConverseCommandInput } from "@aws-sdk/client-bedrock-runtime";
 import { config } from "./config";
+import { CanceladoError, checarCancelado, esperar, sinalAtual } from "./cancelamento";
 import { canonico, schemaReduzido, validar, type SchemaName } from "./schemas";
 import { msgRetry } from "./prompts";
 import type { ChatJson } from "./steps";
 
 export class LLMError extends Error {}
-
 export interface Uso { chamadas: number; entrada: number; saida: number }
 export const novoUso = (): Uso => ({ chamadas: 0, entrada: 0, saida: 0 });
 
@@ -56,9 +56,15 @@ const MAX_TOKENS: Record<SchemaName, number> = {
 };
 
 async function chamar(body: ConverseCommandInput): Promise<Resp> {
+  checarCancelado();
+  const externo = sinalAtual();
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), config.llmTimeoutMs);
-  try { return await converse(body, ac.signal); } finally { clearTimeout(t); }
+  const repassar = () => ac.abort();
+  externo?.addEventListener("abort", repassar, { once: true });
+  try { return await converse(body, ac.signal); }
+  catch (e) { if (externo?.aborted) throw new CanceladoError(); throw e; }
+  finally { clearTimeout(t); externo?.removeEventListener("abort", repassar); }
 }
 
 /** Equivalente a chat_json do Python: schema, temperatura e retry com a mesma mensagem. */
@@ -89,6 +95,7 @@ export function criarChatJson(uso?: Uso): ChatJson {
         if (erros.length) throw new TypeError("schema: " + erros.slice(0, 3).join("; "));
         return canonico<T>(dados, schema);
       } catch (e) {
+        if (e instanceof CanceladoError) throw e;
         ultimo = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
         const retentavel = e instanceof SyntaxError || e instanceof TypeError || e instanceof LLMError ||
           (e instanceof Error && (e.name === "AbortError" || /throttl|timeout|ServiceUnavailable|ModelTimeout|InternalServer/i.test(e.name + e.message)));
@@ -97,7 +104,7 @@ export function criarChatJson(uso?: Uso): ChatJson {
           if (conteudo) messages.push({ role: "assistant", content: [{ text: conteudo }] });
           else if (messages[messages.length - 1].role === "user" && messages.length > 1) messages.pop();
           if (conteudo) messages.push({ role: "user", content: [{ text: msgRetry(ultimo) }] });
-          else await new Promise((r) => setTimeout(r, 1500 * (tentativa + 1)));
+          else await esperar(1500 * (tentativa + 1));
         }
       }
     }

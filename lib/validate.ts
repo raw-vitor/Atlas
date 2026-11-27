@@ -30,6 +30,12 @@ export function valores(txt: string): number[] {
   return out;
 }
 
+/** Pendências que valem para qualquer caso. O chat não as repete; o painel do deck mostra. */
+export const PENDENCIAS_FIXAS = [
+  "custo de não fazer nada em R$ (precisa das taxas dos ativos atuais)",
+  "regras do arquivo 09 (IR, FGC, macro) são de 08/10/2026: reconfirmar por busca antes de usar",
+];
+
 /** Regras que só dependem dos dados lidos: citação na transcrição e pendências. */
 export function checarDados(lead: Lead, ativos: Ativo[], an: Analise, transcricao: string): [string[], string[]] {
   const avisos: string[] = [];
@@ -42,8 +48,7 @@ export function checarDados(lead: Lead, ativos: Ativo[], an: Analise, transcrica
     pend.push("confirmar se os papéis bancários são do mesmo conglomerado (define o excedente do FGC)");
   const semLiq = ativos.filter((a) => !a.fora_do_depara && (!a.liquidez.trim() || a.liquidez.toLowerCase().includes("confirmar"))).map((a) => a.nome);
   if (semLiq.length) pend.push("liquidez diária × portabilidade, taxa, carência e vencimento de: " + [...new Set(semLiq)].join(", "));
-  pend.push("custo de não fazer nada em R$ (precisa das taxas dos ativos atuais)");
-  pend.push("regras do arquivo 09 (IR, FGC, macro) são de 08/10/2026: reconfirmar por busca antes de usar");
+  pend.push(...PENDENCIAS_FIXAS);
   return [avisos, pend];
 }
 

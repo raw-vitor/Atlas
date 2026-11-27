@@ -1,5 +1,6 @@
 /** Triagem de cada arquivo por LLM: o que ele é e o que dá para tirar dele. A contagem de sinais fica de reserva. */
 import { perguntarJson, type Uso } from "./bedrock";
+import { CanceladoError } from "./cancelamento";
 import { config } from "./config";
 
 export const TIPOS = ["extrato", "transcricao_r1", "deck_anterior", "anotacoes", "outro"] as const;
@@ -60,7 +61,7 @@ export const triarComLlm: TriadorLlm = async (itens, uso) => {
       if (Number.isInteger(c.indice) && c.indice >= 0 && c.indice < itens.length && TIPOS.includes(c.tipo))
         out[c.indice] = { tipo: c.tipo, contem: (c.contem ?? []).filter((x) => CONTEM.includes(x)), data_referencia: c.data_referencia ?? "", confianca: Number(c.confianca) || 0, motivo: c.motivo ?? "" };
     return out;
-  } catch { return null; }
+  } catch (e) { if (e instanceof CanceladoError) throw e; return null; }
 };
 
 export type PapelTriado = "carteira" | "transcricao" | "contexto";

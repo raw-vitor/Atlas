@@ -60,6 +60,10 @@ describe("4.4 rede de segurança na leitura", () => {
     expect(b[0]).toContain("parece um extrato");
   });
 
+  it("não avisa de arquivo que a triagem por LLM já identificou", () => {
+    expect(avisosDePapel([{ nome: "x.pdf", texto: docx, origemPapel: "automatico", tipo: "extrato" }], [])).toEqual([]);
+  });
+
   it("não avisa quando o assessor declarou o papel", () => {
     expect(avisosDePapel([{ nome: "x.txt", texto: docx, origemPapel: "usuario" }], [])).toEqual([]);
   });

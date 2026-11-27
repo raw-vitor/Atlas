@@ -51,14 +51,29 @@ describe("resumo: avisos do método logo após a leitura", () => {
     c.analise = analise;
     c.ativos = [];
     const t = resumoDoCaso(c, []);
-    expect(t).toContain("Avisos do método:\n- Citação não encontrada literalmente na transcrição");
-    expect(t).toContain("Pendências a validar antes da R2:\n- custo de não fazer nada");
+    expect(t).toContain("Antes da R2:\n- 1 citação do lead não bate com a transcrição");
+    expect(t).not.toContain("custo de não fazer nada");
+    expect(t).not.toContain("arquivo 09");
     expect(publicoCaso(c).avisosMetodo).toHaveLength(1);
   });
   it("sem carteira (analise vazia) o bloco não aparece", () => {
     const c = caso("Lead: oi.", lead({ frases_literais: ["nunca dito"] }));
     const t = resumoDoCaso(c, []);
-    expect(t).not.toContain("Avisos do método");
+    expect(t).not.toContain("Antes da R2");
     expect(publicoCaso(c).pendenciasMetodo).toEqual([]);
+  });
+});
+
+describe("resumo: formato curto em bullets", () => {
+  it("lista arquivos, carteira, lead e só o primeiro objetivo", () => {
+    const c = caso("Lead: quero aposentar.", lead({ objetivos: ["Aposentar aos 60", "Liquidez 30 a 90 dias", "Assessoria"], perfil: "Conservador/Moderado" }));
+    c.fontes.push({ nome: "ext.pdf", papel: "carteira", tipo: "extrato", origemPapel: "automatico", texto: "x", hash: "h" });
+    c.analise = { total: 739668.62, n_ativos: 2, excedente_fgc: 0, excedente_fgc_a_validar: false } as never;
+    const t = resumoDoCaso(c, ["ext.pdf", "r1.txt"]);
+    expect(t).toContain("Li 2 arquivos:\n- ext.pdf: extrato, usado como carteira\n- r1.txt: transcrição");
+    expect(t).toContain("- Carteira: 2 ativos,");
+    expect(t).toContain("- Lead: Carlos, Conservador/Moderado");
+    expect(t).toContain("- Objetivo: Aposentar aos 60 (+2 no painel)");
+    expect(t).toContain("Pronto para gerar os slides. Assessor e data da R2 ficaram no padrão.");
   });
 });

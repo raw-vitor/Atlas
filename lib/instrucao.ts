@@ -1,5 +1,6 @@
 /** Interpreta, com o LLM, uma mensagem curta do assessor sobre um caso já aberto. */
 import { perguntarJson, type Uso } from "./bedrock";
+import { CanceladoError } from "./cancelamento";
 import { prontidao, type AjustesLead, type Caso } from "./caso";
 
 export interface Instrucao { usarTranscricao: boolean; ajustes: AjustesLead }
@@ -40,5 +41,5 @@ export async function interpretarInstrucao(msg: string, caso: Caso, uso: Uso): P
     const objetivos = (r.objetivos ?? []).map((o) => o.trim()).filter(Boolean);
     if (objetivos.length) ajustes.objetivos = objetivos;
     return { usarTranscricao: r.usar_transcricao === true, ajustes };
-  } catch { return null; } // sem a interpretação, a mensagem segue o caminho normal
+  } catch (e) { if (e instanceof CanceladoError) throw e; return null; } // sem a interpretação, a mensagem segue o caminho normal
 }
