@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuArrowLeft, LuCircleAlert, LuEye, LuRotateCcw } from "react-icons/lu";
 import { hrefChat } from "@/components/chat/configPrompt";
 import { formatarTokens, nivelDe, pctDe } from "@/components/chat/contexto";
+import { UsuarioSessao } from "@/components/UsuarioSessao";
 import { LIMITES, type BlocoExtra, type Categoria, type DadosConfig, type RespostaConfig } from "@/lib/prompt-tipos";
 import { ErroConfig, obterConfig, restaurarTudo, salvarConfig } from "./api";
 import { avisar, avisarComDesfazer, Avisos } from "./avisos";
@@ -25,7 +26,7 @@ type TipoDialogo = "etapa" | "tudo" | "sair";
 const paraDados = (c: { alterados: DadosConfig["alterados"]; extras: DadosConfig["extras"] }): DadosConfig => copiarDados({ alterados: c.alterados, extras: c.extras });
 const LARGURA = "1040px";
 
-export function PromptEditor({ voltarId }: { voltarId?: string }) {
+export function PromptEditor({ voltarId, email, sair = false }: { voltarId?: string; email?: string | null; sair?: boolean }) {
   const destinoChat = hrefChat(voltarId);
   const router = useRouter();
   const [carga, setCarga] = useState<Carga>("carregando");
@@ -261,7 +262,10 @@ export function PromptEditor({ voltarId }: { voltarId?: string }) {
                 <LuArrowLeft aria-hidden /> Voltar ao chat
               </Flex>
             </Link>
-            <Button size="sm" variant="outline" borderColor="profundo" color="profundo" disabled={carga !== "ok"} onClick={() => setGaveta(true)}><LuEye /> Ver texto final</Button>
+            <Flex align="center" gap="3" minW="0">
+              {email && <UsuarioSessao email={email} sair={sair} />}
+              <Button size="sm" variant="outline" borderColor="profundo" color="profundo" disabled={carga !== "ok"} onClick={() => setGaveta(true)}><LuEye /> Ver texto final</Button>
+            </Flex>
           </Flex>
           <Heading as="h1" size={{ base: "lg", md: "xl" }} color="profundo" mt="3" fontWeight="semibold">Como o Atlas monta a sua R2</Heading>
           <Text fontSize="sm" color="profundo" mt="1">As mudanças valem só para você, nas próximas gerações.</Text>

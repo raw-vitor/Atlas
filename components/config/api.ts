@@ -1,4 +1,5 @@
 import type { CorpoPut, RespostaConfig } from "@/lib/prompt-tipos";
+import { AVISO_SESSAO_EXPIRADA, conferirSessao } from "../sessao";
 
 /**
  * Erro de chamada à API de configuração. `mensagem` já vem em português, pronta para a tela.
@@ -29,11 +30,12 @@ function valida(r: unknown): r is RespostaConfig {
 async function chamar(init?: RequestInit): Promise<RespostaConfig> {
   let r: Response;
   try { r = await fetch(URL, { cache: "no-store", ...init }); }
-  catch { throw new ErroConfig(0, SEM_REDE); }
+  catch { throw new ErroConfig(0, (await conferirSessao()) ? AVISO_SESSAO_EXPIRADA : SEM_REDE); }
   const corpo: unknown = await r.json().catch(() => null);
   const j = corpo && typeof corpo === "object" ? (corpo as Record<string, unknown>) : {};
   if (!r.ok) {
-    const msg = typeof j.erro === "string" && j.erro ? j.erro : mensagemPadrao(r.status);
+    const vencida = r.status === 401 && (await conferirSessao());
+    const msg = vencida ? AVISO_SESSAO_EXPIRADA : typeof j.erro === "string" && j.erro ? j.erro : mensagemPadrao(r.status);
     throw new ErroConfig(r.status, msg, r.status === 409 && valida(j.atual) ? j.atual : null);
   }
   if (!valida(corpo)) throw new ErroConfig(r.status, "Resposta inesperada do servidor. Tente de novo.");

@@ -25,10 +25,13 @@ Variáveis: `ENVIRONMENT`, `ATLAS_DEV_USUARIO`, `BEDROCK_*`, `ATLAS_CONTEXTO_TOK
 
 Toda rota `/api/*` chama `usuarioAtual(req)` (`lib/auth.ts`) e recebe `{ id, email }` ou responde 401 `{ erro }`. Local: `ATLAS_DEV_USUARIO`, sobreposto pelo cabeçalho `x-atlas-dev-usuario` fora de produção. Conversa de outro usuário responde **404** (não revela existência).
 
-Detalhes de `lib/auth.ts` (fase 2):
+Detalhes de `lib/auth.ts` (plano em `docs/PLANO_LOGIN_CLOUDFLARE_ACCESS.md`):
 
-- `usuarioAtual(req, env?)`: lê `ENVIRONMENT` e `ATLAS_DEV_USUARIO` do `env` do Worker (com `config` como reserva). Fora de produção, o cabeçalho `x-atlas-dev-usuario` vale se for um e-mail válido; **cabeçalho presente e inválido é 401** (não cai no usuário padrão). Em produção o cabeçalho e o usuário padrão são ignorados e a identidade vem de um `VerificadorAcesso` (interface em `lib/auth.ts`, `definirVerificadorAcesso`). O verificador padrão **recusa tudo**, então em produção toda rota responde 401 até alguém implementar a validação do JWT do Access (assinatura, `aud`, `exp`). Um JWT não validado nunca vale.
-- `id` = sha-256 do e-mail em minúsculas, truncado em 32 hex, enquanto não há o `sub` do Access. Trocar para o `sub` exige migrar `usuarios.id`, `conversas.usuario_id` e os prefixos de R2.
+- `usuarioAtual(req, env?)`: lê `ENVIRONMENT` e `ATLAS_DEV_USUARIO` do `env` do Worker (com `config` como reserva). Fora de produção, o cabeçalho `x-atlas-dev-usuario` vale se for um e-mail válido; **cabeçalho presente e inválido é 401** (não cai no usuário padrão). Em produção o cabeçalho e o usuário padrão são ignorados e a identidade vem do `VerificadorAcesso`.
+- Verificador padrão: `verificadorAccess()`. Valida o JWT do Cloudflare Access no cabeçalho `Cf-Access-Jwt-Assertion` com `jose`: assinatura RS256 com as chaves de `ACCESS_TEAM_DOMAIN/cdn-cgi/access/certs`, `iss` igual ao team domain, `aud` igual a `ACCESS_AUD`, `exp` e `nbf`. Tira o e-mail do claim `email`. Token sem `email` (service token) é recusado. Sem as duas variáveis, sem token ou com token inválido, devolve null e a rota responde 401 (falha fechada). `definirVerificadorAcesso` troca o verificador nos testes.
+- Variáveis novas, em produção: `ACCESS_TEAM_DOMAIN` (`https://<team>.cloudflareaccess.com`, sem barra no fim) e `ACCESS_AUD` (AUD Tag da aplicação do Access). Não são segredos, mas não vão ao cliente. `ENVIRONMENT=production` no deploy. Locais e vazias em `.dev.vars.example`.
+- Quem entra é decidido só pela política do Access. O Worker não repete a regra de domínio ou grupo.
+- `id` = sha-256 do e-mail em minúsculas, truncado em 32 hex. O `sub` do Access não é usado: trocar para ele exige migrar `usuarios.id`, `conversas.usuario_id`, `config_prompt.usuario_id` e os prefixos de R2.
 - A linha de `usuarios` é criada no primeiro acesso (`INSERT ... ON CONFLICT DO NOTHING`).
 - `ATLAS_ACCESS_TOKEN`, `autorizado()` e `/api/login` foram removidos.
 - Atenção: `ENVIRONMENT` precisa valer `"production"` no ambiente de produção (fase 7); com qualquer outro valor o cabeçalho de desenvolvimento é aceito.

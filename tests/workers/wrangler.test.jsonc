@@ -6,7 +6,12 @@
 	"main": "entry.ts",
 	"compatibility_date": "2026-11-23",
 	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-	"vars": { "ENVIRONMENT": "test" },
+	"vars": {
+		"ENVIRONMENT": "test",
+		// Valores de teste do Cloudflare Access (o JWT dos testes é assinado por uma chave gerada na hora; ver entry.ts).
+		"ACCESS_TEAM_DOMAIN": "https://atlas-teste.cloudflareaccess.com",
+		"ACCESS_AUD": "aud-atlas-teste"
+	},
 	"d1_databases": [
 		{
 			"binding": "DB",

@@ -4,6 +4,7 @@
  * O consumidor de turno/deck não roda aqui (as mensagens dessas filas só são registradas); a purga roda de verdade pela fila.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { gravarConfigPrompt } from "../../lib/db/configPrompt";
 import { gravarMensagem } from "../../lib/db/mensagens";
 import { chaveConversa } from "../../lib/r2";
@@ -109,6 +110,62 @@ describe("autenticação", () => {
     expect(r.status).toBe(401);
     const r2 = await api(null, "POST", "/api/conversas", {}, { "x-teste-ambiente": "production", "cf-access-jwt-assertion": "eyJ.falso.jwt" });
     expect(r2.status).toBe(401);
+  });
+
+  describe("JWT do Cloudflare Access em produção (verificador real, chaves de teste injetadas)", () => {
+    const TEAM = "https://atlas-teste.cloudflareaccess.com";
+    const AUD = "aud-atlas-teste";
+    const prod = { "x-teste-ambiente": "production" };
+    let privada: CryptoKey;
+    let jwks = "";
+
+    beforeAll(async () => {
+      const par = await generateKeyPair("RS256");
+      privada = par.privateKey;
+      jwks = JSON.stringify({ keys: [{ ...(await exportJWK(par.publicKey)), kid: "k1", alg: "RS256", use: "sig" }] });
+    });
+
+    const assinar = (email: string | undefined, o: { aud?: string; iss?: string; chave?: CryptoKey } = {}) =>
+      new SignJWT(email === undefined ? {} : { email })
+        .setProtectedHeader({ alg: "RS256", kid: "k1" })
+        .setIssuer(o.iss ?? TEAM)
+        .setAudience(o.aud ?? AUD)
+        .setSubject("sub-do-access")
+        .setIssuedAt()
+        .setExpirationTime("10m")
+        .sign(o.chave ?? privada);
+    const comJwt = (token: string, extra: Record<string, string> = {}) => ({ ...prod, "x-teste-jwks": jwks, "cf-access-jwt-assertion": token, ...extra });
+
+    it("JWT válido responde 200, usa o e-mail do token (não o cabeçalho de dev) e cria o usuário com id derivado do e-mail", async () => {
+      const r = await api(null, "GET", "/api/conversas", undefined, comJwt(await assinar("Carla@EQI.local")));
+      expect(r.status).toBe(200);
+      const us = await linhas("SELECT id, email FROM usuarios WHERE email = 'carla@eqi.local'");
+      expect(us).toHaveLength(1);
+      expect(us[0].id).toMatch(/^[0-9a-f]{32}$/);
+
+      // O cabeçalho de dev não troca a identidade quando há JWT válido em produção.
+      const r2 = await api("outra@eqi.local", "POST", "/api/conversas", { titulo: "da Carla" }, comJwt(await assinar("carla@eqi.local")));
+      expect(r2.status).toBe(201);
+      const donos = await linhas("SELECT usuario_id FROM conversas WHERE id = ?", r2.corpo.conversa.id);
+      expect(donos[0].usuario_id).toBe(us[0].id);
+      expect(await linhas("SELECT 1 FROM usuarios WHERE email = 'outra@eqi.local'")).toHaveLength(0);
+    });
+
+    it("JWT com aud errado, issuer errado, chave de outro par, sem e-mail ou sem o cabeçalho de chaves de teste é 401", async () => {
+      const outra = (await generateKeyPair("RS256")).privateKey;
+      const casos = [
+        await assinar("carla@eqi.local", { aud: "outra-aplicacao" }),
+        await assinar("carla@eqi.local", { iss: "https://outro.cloudflareaccess.com" }),
+        await assinar("carla@eqi.local", { chave: outra }),
+        await assinar(undefined),
+      ];
+      for (const token of casos) expect((await api(null, "GET", "/api/conversas", undefined, comJwt(token))).status).toBe(401);
+      // Sem as chaves de teste o verificador padrão buscaria as do team domain na rede: nunca valida um token assinado aqui.
+      const semChaves = { ...prod, "cf-access-jwt-assertion": await assinar("carla@eqi.local") };
+      expect((await api(null, "GET", "/api/conversas", undefined, semChaves)).status).toBe(401);
+      // Sem token, mesmo com o cabeçalho de dev e as chaves de teste.
+      expect((await api(A, "GET", "/api/conversas", undefined, { ...prod, "x-teste-jwks": jwks })).status).toBe(401);
+    });
   });
 });
 

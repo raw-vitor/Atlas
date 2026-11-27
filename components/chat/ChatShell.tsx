@@ -4,6 +4,8 @@ import NextLink from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LuMenu, LuSettings, LuSquare } from "react-icons/lu";
 import { AtlasOrb } from "@/components/atlas/AtlasOrb";
+import { AVISO_SESSAO_EXPIRADA } from "@/components/sessao";
+import { UsuarioSessao } from "@/components/UsuarioSessao";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   ErroApi, apagarConversa, cancelarTarefa, criarConversa, ehCancelamento, enviarAnexo, enviarMensagem, gerarSlides,
@@ -39,7 +41,7 @@ const atualizarUrl = (id: string | null) => {
   if (typeof window !== "undefined") window.history.replaceState(null, "", id ? `?c=${id}` : window.location.pathname);
 };
 
-export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
+export function ChatShell({ conversaInicial, email, sair = false }: { conversaInicial?: string; email?: string | null; sair?: boolean }) {
   const [lista, setLista] = useState<ConversaResumo[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [estadoLista, setEstadoLista] = useState<EstadoLista>("carregando");
@@ -423,7 +425,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
   const ctxLimite = ativa.contexto?.limite ?? resumo?.ctxLimite;
   const ctxPct = ativaId !== RASCUNHO && carregada && ctxTokens != null && ctxLimite ? pctDe(ctxTokens, ctxLimite) : null;
   const estadoConexao = conexao.id === ativaId ? conexao.estado : "ok";
-  const aviso = ativaTarefa && estadoConexao !== "ok" ? "Reconectando…" : undefined;
+  const aviso = ativaTarefa && estadoConexao !== "ok" ? (estadoConexao === "expirada" ? AVISO_SESSAO_EXPIRADA : "Reconectando…") : undefined;
   const msgProgresso = ativa.progresso?.msg || ativa.atividade || "";
   const pctProgresso = ativa.progresso?.pct ?? null;
   const pendente: Pendente | null = ativaTarefa ? { parcial: ativa.parcial, msg: msgProgresso, pct: pctProgresso, fila: ativa.fila, aviso } : null;
@@ -487,6 +489,7 @@ export function ChatShell({ conversaInicial }: { conversaInicial?: string }) {
             </IconButton>
           </Tooltip>
           {personalizada && <VisuallyHidden id="atlas-instrucoes-ativas">Você tem instruções personalizadas.</VisuallyHidden>}
+          {email && <UsuarioSessao email={email} sair={sair} />}
         </Flex>
         {carregada && ativa.caso && (
           <ConfigAlerta key={ativaId} conversaId={ativaId} versoes={ativa.caso.configVersoes} atual={ativa.configAtual} />

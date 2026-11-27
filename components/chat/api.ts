@@ -1,3 +1,4 @@
+import { AVISO_SESSAO_EXPIRADA, conferirSessao } from "../sessao";
 import { temPersonalizacao } from "./configPrompt";
 import type { Anexo, CasoPublico, Contexto, ConversaResumo, Faixa, MensagemSalva, TarefaPublica } from "./types";
 
@@ -21,12 +22,23 @@ function erroDe(status: number, corpo: unknown): ErroApi {
   return new ErroApi(status, msg, j);
 }
 
+/** Erro de rede, ou a sessão do Access vencida (o redirect para o login aparece como falha de rede). A página recarrega sozinha. */
+async function erroDeRede(): Promise<ErroApi> {
+  return (await conferirSessao()) ? new ErroApi(401, AVISO_SESSAO_EXPIRADA) : new ErroApi(0, SEM_REDE);
+}
+
+/** Resposta de erro do servidor. Num 401 confere se a sessão venceu; se sim, o aviso troca a mensagem do servidor. */
+async function erroDeResposta(status: number, corpo: unknown): Promise<ErroApi> {
+  const e = erroDe(status, corpo);
+  return status === 401 && (await conferirSessao()) ? new ErroApi(401, AVISO_SESSAO_EXPIRADA, e.extra) : e;
+}
+
 async function chamar<T>(url: string, init?: RequestInit): Promise<T> {
   let r: Response;
   try { r = await fetch(url, init); }
-  catch (e) { if (init?.signal?.aborted) throw e; throw new ErroApi(0, SEM_REDE); }
+  catch (e) { if (init?.signal?.aborted) throw e; throw await erroDeRede(); }
   const corpo: unknown = r.status === 204 ? null : await r.json().catch(() => null);
-  if (!r.ok) throw erroDe(r.status, corpo);
+  if (!r.ok) throw await erroDeResposta(r.status, corpo);
   return corpo as T;
 }
 
@@ -93,10 +105,10 @@ export function enviarAnexo(id: string, arquivo: File, aoProgredir: (pct: number
       if (xhr.status >= 200 && xhr.status < 300 && corpo && typeof corpo === "object" && "anexo" in corpo) {
         aoProgredir(100);
         resolve((corpo as { anexo: Anexo }).anexo);
-      } else reject(erroDe(xhr.status, corpo));
+      } else void erroDeResposta(xhr.status, corpo).then(reject);
     };
-    xhr.onerror = () => reject(new ErroApi(0, SEM_REDE));
-    xhr.ontimeout = () => reject(new ErroApi(0, SEM_REDE));
+    xhr.onerror = () => void erroDeRede().then(reject);
+    xhr.ontimeout = () => void erroDeRede().then(reject);
     const abortar = () => xhr.abort();
     xhr.onabort = () => reject(new DOMException("Cancelado", "AbortError"));
     sinal?.addEventListener("abort", abortar, { once: true });
@@ -114,10 +126,10 @@ export const textoDoErro = (e: unknown) => (e instanceof ErroApi ? e.message : S
 export async function obterPersonalizacao(): Promise<{ versao: number; personalizada: boolean } | null> {
   try {
     const r = await fetch("/api/configuracoes/prompt", { cache: "no-store" });
-    if (!r.ok) return null;
+    if (!r.ok) { if (r.status === 401) void conferirSessao(); return null; }
     const j: unknown = await r.json();
     const c = j && typeof j === "object" ? (j as { config?: { versao?: unknown; alterados?: Record<string, unknown>; extras?: { ativo: boolean }[] } }).config : undefined;
     if (!c || typeof c.versao !== "number") return null;
     return { versao: c.versao, personalizada: c.versao > 0 && temPersonalizacao(c) };
-  } catch { return null; }
+  } catch { void conferirSessao(); return null; }
 }

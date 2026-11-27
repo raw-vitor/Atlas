@@ -1,3 +1,4 @@
+import { conferirSessao } from "../sessao";
 import { urlEventos } from "./api";
 import { mesclar, paraMensagem, tarefaAtiva } from "./mensagens";
 import type { CasoPublico, Contexto, ConversaUI, Mensagem, MensagemSalva, StatusTarefa, TarefaPublica } from "./types";
@@ -90,7 +91,8 @@ export function aplicarEvento(c: ConversaUI, e: EventoServidor): ConversaUI {
 
 // ---- Conexão ----
 
-export type EstadoConexao = "ok" | "reconectando" | "fechada";
+/** `expirada`: a sessão do Access venceu; a conexão não reabre e a página recarrega sozinha. */
+export type EstadoConexao = "ok" | "reconectando" | "fechada" | "expirada";
 export interface FonteEventos {
   readyState: number; close(): void;
   addEventListener(nome: string, fn: (ev: MessageEvent) => void): void;
@@ -104,9 +106,10 @@ const MAX_REABERTURAS = 5;
 
 /**
  * Mantém uma única conexão SSE aberta: a da conversa ativa. Abrir outra conversa fecha a anterior.
- * O EventSource reconecta sozinho (e reenvia Last-Event-ID); se o navegador desistir (HTTP de erro), reabre algumas vezes.
+ * O EventSource reconecta sozinho (e reenvia Last-Event-ID); se o navegador desistir (HTTP de erro, ou o redirect do Access
+ * com a sessão vencida), confere a sessão e, se ela segue válida, reabre algumas vezes. Sessão vencida: não reabre.
  */
-export function criarGerenciadorEventos(fabrica: FabricaFonte = (u) => new EventSource(u)) {
+export function criarGerenciadorEventos(fabrica: FabricaFonte = (u) => new EventSource(u), conferir: () => Promise<boolean> = conferirSessao) {
   let atual: { id: string; fonte: FonteEventos; timer?: ReturnType<typeof setTimeout> } | null = null;
   let geracao = 0;
 
@@ -138,7 +141,13 @@ export function criarGerenciadorEventos(fabrica: FabricaFonte = (u) => new Event
         if (tentativas >= MAX_REABERTURAS) return aoConexao("fechada");
         aoConexao("reconectando");
         tentativas++;
-        atual = { id, fonte, timer: setTimeout(conectar, ESPERA_REABRIR_MS * tentativas) };
+        const espera = ESPERA_REABRIR_MS * tentativas;
+        atual = { id, fonte };
+        void conferir().then((vencida) => {
+          if (minha !== geracao) return; // outra conversa foi aberta, ou a conexão foi fechada, enquanto conferia
+          if (vencida) return aoConexao("expirada");
+          atual = { id, fonte, timer: setTimeout(conectar, espera) };
+        });
       };
     };
     conectar();

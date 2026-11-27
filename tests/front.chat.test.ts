@@ -231,20 +231,22 @@ describe("conexão SSE", () => {
     expect(f.fechada).toBe(false);
   });
 
-  it("se o navegador desistir, reabre a mesma conversa depois de uma espera", () => {
+  it("se o navegador desistir, confere a sessão e reabre a mesma conversa depois de uma espera", async () => {
     vi.useFakeTimers();
-    const g = criarGerenciadorEventos((u) => new FonteFalsa(u));
+    const conferir = vi.fn(async () => false);
+    const g = criarGerenciadorEventos((u) => new FonteFalsa(u), conferir);
     const estados: string[] = [];
     g.abrir("a", () => {}, (s) => estados.push(s));
     const f = FonteFalsa.todas[0];
     f.readyState = 2; f.onerror?.(new Event("error"));
     expect(FonteFalsa.todas).toHaveLength(1);
-    vi.advanceTimersByTime(3000);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(conferir).toHaveBeenCalledTimes(1);
     expect(FonteFalsa.todas).toHaveLength(2);
     expect(FonteFalsa.todas[1].url).toBe(f.url);
     g.fechar(); // cancela reaberturas pendentes
     FonteFalsa.todas[1].readyState = 2; FonteFalsa.todas[1].onerror?.(new Event("error"));
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(FonteFalsa.todas).toHaveLength(2);
   });
 });
