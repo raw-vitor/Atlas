@@ -8,6 +8,13 @@ ENVIRONMENT=development
 # Usuário local (sem Cloudflare Access). Para testar outro assessor: cabeçalho x-atlas-dev-usuario.
 ATLAS_DEV_USUARIO=dev@eqi.local
 
+# Cloudflare Access (só em produção, com ENVIRONMENT=production). Sem as duas variáveis, toda rota responde 401.
+# Team domain da conta Zero Trust, sem barra no fim, e o AUD Tag da aplicação do Access. Não são segredos, mas não vão ao cliente.
+# Vazios aqui de propósito (o cf-typegen não gera tipo para variável comentada). Local, com ENVIRONMENT=development, não são usados.
+ACCESS_TEAM_DOMAIN=
+ACCESS_AUD=
+# Exemplo: ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com
+
 # Bedrock (só no servidor). Chave Bearer da conta. Nunca coloque valor real neste arquivo versionado.
 BEDROCK_API_KEY=
 # Alternativa à BEDROCK_API_KEY, lida pelo mesmo caminho.

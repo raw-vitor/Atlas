@@ -12,8 +12,12 @@
  *   x-teste-fila: falha          o envio à fila de turno/deck lança
  *   x-teste-deck: fora | schema  o Container do deck não responde / responde com outro schema
  *   x-teste-ambiente: production simula ENVIRONMENT=production
+ *   x-teste-jwks: {"keys":[...]}  chaves públicas com que o verificador do Access confere o JWT (o teste gera o par na hora);
+ *                                 sem ele, o verificador é o padrão e busca as chaves na rede (que não existe nos testes: 401)
  */
+import { createLocalJWKSet, type JSONWebKeySet } from "jose";
 import { Conversa } from "../../workers/conversa";
+import { definirVerificadorAcesso, verificadorAccess } from "../../lib/auth";
 import { processarLote, purgaAgendada } from "../../lib/tarefas";
 import constantes from "../../lib/schemas/constantes.json";
 import { putAnexo } from "../../lib/rotas/anexos";
@@ -26,12 +30,25 @@ import { getMensagens, postMensagens } from "../../lib/rotas/mensagens";
 
 export { Conversa };
 
+// O verificador real do Access, com as chaves vindas do cabeçalho `x-teste-jwks` da própria requisição (sem estado compartilhado
+// entre requisições). Só este Worker de teste faz isso; o de produção usa `verificadorAccess()` com as chaves do team domain.
+const verificadorPadrao = verificadorAccess();
+definirVerificadorAcesso({
+  verificar(req, e) {
+    const jwks = req.headers.get("x-teste-jwks");
+    if (!jwks) return verificadorPadrao.verificar(req, e);
+    return verificadorAccess(() => createLocalJWKSet(JSON.parse(jwks) as JSONWebKeySet)).verificar(req, e);
+  },
+});
+
 export interface EnvTeste {
   DB: D1Database;
   ARQUIVOS: R2Bucket;
   TAREFAS: Queue;
   CONVERSA: DurableObjectNamespace<Conversa>;
   ENVIRONMENT: string;
+  ACCESS_TEAM_DOMAIN: string;
+  ACCESS_AUD: string;
   MAX_UPLOAD_MB?: string;
 }
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { idConversaValido } from "@/components/chat/configPrompt";
 import { PromptEditor } from "@/components/config/PromptEditor";
+import { identidadeDaPagina } from "@/lib/pagina";
 
 export const metadata: Metadata = {
   title: "Suas instruções · Atlas",
@@ -10,5 +11,6 @@ export const metadata: Metadata = {
 /** `?voltar={id}` leva de volta à conversa aberta; só vale um id de 32 hex. */
 export default async function Page({ searchParams }: PageProps<"/configuracoes/prompt">) {
   const { voltar } = await searchParams;
-  return <PromptEditor voltarId={idConversaValido(voltar) ? voltar : undefined} />;
+  const { email, sair } = await identidadeDaPagina();
+  return <PromptEditor voltarId={idConversaValido(voltar) ? voltar : undefined} email={email} sair={sair} />;
 }

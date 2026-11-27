@@ -1,6 +1,7 @@
 # Fundo escuro do Atlas (reservado para a tela de login)
 
-Origem: `public/base.html`. Este fundo foi testado na tela de boas-vindas e retirado de lá: ela continua clara. A ideia é usá-lo numa futura tela de login, com a esfera em destaque no centro.
+Origem: `public/base.html`. Este fundo foi testado na tela de boas-vindas e retirado de lá: ela continua clara. A tela de login é o template `access/login.html` (Cloudflare Access), que já usa este fundo.
+A ideia original era usá-lo numa futura tela de login, com a esfera em destaque no centro.
 
 ## Fundo
 

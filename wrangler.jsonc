@@ -7,6 +7,9 @@
 	"main": "worker.ts",
 	"compatibility_date": "2026-11-23",
 	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	// Sem URL do workers.dev nem de preview: o acesso é só pela Custom Domain, atrás do Cloudflare Access (docs/PLANO_LOGIN_CLOUDFLARE_ACCESS.md, 3.3).
+	"workers_dev": false,
+	"preview_urls": false,
 	"assets": {
 		"directory": ".open-next/assets",
 		"binding": "ASSETS"
