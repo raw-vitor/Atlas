@@ -164,3 +164,29 @@ Como o plano (seção 4.1), mais: `mensagens.id_cliente`; índice único parcial
 **Decisão para `next dev`: DOs, filas e Containers só existem em `npm run preview`.** O `getPlatformProxy` (que o `next dev` usa) não carrega as classes de DO do mesmo Worker; a solução recomendada pela Cloudflare é um Worker auxiliar com `script_name`, mas a fila continuaria sem consumidor (o produtor do Next e o consumidor do Worker auxiliar ficam em instâncias separadas do Miniflare), então o chat não funcionaria de ponta a ponta mesmo assim. Em `next dev`, `env().DB` e `env().ARQUIVOS` funcionam; `env().TAREFAS.send()` não falha mas ninguém consome; `conversaDo(...)` falha com `internal error` na primeira chamada de RPC. O `wrangler` imprime no início um aviso sobre as classes `Conversa`, `Extrator` e `DeckService`; é esperado.
 
 Testes de rota que precisem do DO ou da fila devem ir em `tests/workers/` (com o entry de teste) ou usar dublês em `tests/` (Vitest comum).
+
+## Interface rotas ↔ consumidor (fase 2/3)
+
+Rotas (`app/api/**`, `lib/auth.ts`, `lib/db/**`, `lib/tarefas/purga*.ts`) têm um dono; o consumidor (`lib/tarefas/turno.ts`, `lib/tarefas/deck.ts`, `lib/tarefas/execucao/**`, `lib/caso.ts`, `lib/deck.ts`, `lib/ingest.ts`, remoção de `lib/jobs.ts` e `/api/jobs/*`) tem outro. Assinaturas fixas:
+
+```ts
+// lib/db/mensagens.ts (dono: rotas)
+gravarMensagem(env: CloudflareEnv, m: { conversaId: string; tipo: "usuario" | "atlas" | "resultado"; texto?: string; meta?: MensagemSalva["meta"]; idCliente?: string }): Promise<MensagemSalva>   // seq = max+1 na mesma transação; também toca conversas.atualizada
+apagarMensagem(env: CloudflareEnv, conversaId: string, id: string): Promise<void>  // usado no cancelamento
+// lib/db/conversas.ts (dono: rotas)
+atualizarConversa(env: CloudflareEnv, conversaId: string, campos: { titulo?: string; ctxTokens?: number; ctxLimite?: number }): Promise<void>  // sempre toca atualizada
+// lib/r2.ts (dono: rotas)
+chaveConversa(usuarioId: string, conversaId: string): string            // "u/{u}/c/{c}/"
+chaveAnexo(usuarioId, conversaId, hash, nome): string; chaveFonte(usuarioId, conversaId, hash): string; chaveDeck(usuarioId, conversaId, versao, fmt): string
+```
+
+Payload guardado no DO por `iniciarTarefa` (dono do formato: rotas; leitor: consumidor):
+
+```ts
+type PayloadTurno = { texto: string; anexos: Anexo[]; mensagemId: string /* id da MensagemSalva do assessor */ };
+type PayloadDeck  = { acao: "gerar" };
+```
+
+Cancelamento de `turno`: o consumidor chama `apagarMensagem(env, conversaId, payload.mensagemId)` e `terminarTarefa("cancelada")` (o DO restaura o caso). O front remove a mensagem otimista ao receber `fim { status: "cancelada" }`.
+
+Título: na primeira mensagem do assessor, a rota define `titulo` = primeiros 60 caracteres do texto (ou o nome do primeiro anexo), se ainda for "Nova conversa".
