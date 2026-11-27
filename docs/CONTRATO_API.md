@@ -25,6 +25,14 @@ Variáveis: `ENVIRONMENT`, `ATLAS_DEV_USUARIO`, `BEDROCK_*`, `ATLAS_CONTEXTO_TOK
 
 Toda rota `/api/*` chama `usuarioAtual(req)` (`lib/auth.ts`) e recebe `{ id, email }` ou responde 401 `{ erro }`. Local: `ATLAS_DEV_USUARIO`, sobreposto pelo cabeçalho `x-atlas-dev-usuario` fora de produção. Conversa de outro usuário responde **404** (não revela existência).
 
+Detalhes de `lib/auth.ts` (fase 2):
+
+- `usuarioAtual(req, env?)`: lê `ENVIRONMENT` e `ATLAS_DEV_USUARIO` do `env` do Worker (com `config` como reserva). Fora de produção, o cabeçalho `x-atlas-dev-usuario` vale se for um e-mail válido; **cabeçalho presente e inválido é 401** (não cai no usuário padrão). Em produção o cabeçalho e o usuário padrão são ignorados e a identidade vem de um `VerificadorAcesso` (interface em `lib/auth.ts`, `definirVerificadorAcesso`). O verificador padrão **recusa tudo**, então em produção toda rota responde 401 até alguém implementar a validação do JWT do Access (assinatura, `aud`, `exp`). Um JWT não validado nunca vale.
+- `id` = sha-256 do e-mail em minúsculas, truncado em 32 hex, enquanto não há o `sub` do Access. Trocar para o `sub` exige migrar `usuarios.id`, `conversas.usuario_id` e os prefixos de R2.
+- A linha de `usuarios` é criada no primeiro acesso (`INSERT ... ON CONFLICT DO NOTHING`).
+- `ATLAS_ACCESS_TOKEN`, `autorizado()` e `/api/login` foram removidos.
+- Atenção: `ENVIRONMENT` precisa valer `"production"` no ambiente de produção (fase 7); com qualquer outro valor o cabeçalho de desenvolvimento é aceito.
+
 ## Rotas
 
 Erros sempre `{ erro: string }` com mensagem em português pronta para a tela.
@@ -32,12 +40,12 @@ Erros sempre `{ erro: string }` com mensagem em português pronta para a tela.
 | Método e rota | Corpo / query | Resposta |
 |---|---|---|
 | `GET /api/conversas?cursor=` | | `{ itens: ConversaResumo[], cursor: string \| null }` (30 por página, `atualizada` desc) |
-| `POST /api/conversas` | `{ titulo? }` | `201 { conversa: ConversaResumo, caso: CasoPublico }` |
+| `POST /api/conversas` | `{ titulo? }` (corpo opcional) | `201 { conversa: ConversaResumo, caso: CasoPublico }` |
 | `GET /api/conversas/{id}` | | `{ conversa: ConversaResumo, caso: CasoPublico, tarefa: TarefaPublica \| null, contexto: Contexto \| null, alertasVistos: Faixa[] }` |
 | `PATCH /api/conversas/{id}` | `{ titulo?, alertaVisto?: Faixa }` | `{ conversa: ConversaResumo }` |
 | `DELETE /api/conversas/{id}` | | `204`. Some da lista na hora; purga assíncrona |
 | `GET /api/conversas/{id}/mensagens?antes={seq}&limite=50` | | `{ itens: MensagemSalva[], maisAntigas: boolean }` (ordem crescente de `seq`) |
-| `PUT /api/conversas/{id}/anexos?nome={nome}` | corpo = bytes do arquivo, `Content-Length` obrigatório | `201 { anexo: Anexo }`; `413` tamanho, `415` formato |
+| `PUT /api/conversas/{id}/anexos?nome={nome}` | corpo = bytes do arquivo, `Content-Length` obrigatório | `201 { anexo: Anexo }`; `413` tamanho, `415` formato, `411` sem `Content-Length`, `400` vazio, sem nome ou envio interrompido |
 | `POST /api/conversas/{id}/mensagens` | `{ texto: string, anexos: string[] /* Anexo.chave */, idCliente: string }` | `202 { mensagem: MensagemSalva, tarefa: TarefaPublica }`; `409` se houver tarefa em andamento |
 | `POST /api/conversas/{id}/acoes` | `{ acao: "gerar" }` | `202 { tarefa: TarefaPublica }`; `409`, `422 { erro, faltas }`, `503` |
 | `POST /api/conversas/{id}/cancelar` | | `202 { ok: true }` (idempotente) |
@@ -61,6 +69,18 @@ interface Contexto { tokens: number; limite: number; pct: number; estimado: bool
 ```
 
 `CasoPublico` continua o de `components/chat/types.ts` (sem `ocupado` como fonte de verdade: use `tarefa`).
+
+Notas das rotas (fase 2, `lib/rotas/*`):
+
+- `409` de mensagem e de ação traz também `tarefa` (a que está ativa): `{ erro, tarefa }`. `422` de `acoes` traz `faltas`.
+- `GET /api/conversas/{id}`: `tarefa` é a ativa ou, se não houver, a última encerrada (`status` diz qual). `caso.ocupado` é derivado dela. O texto das fontes nunca vai ao navegador; as transcrições são relidas do R2 só para calcular avisos e opções.
+- `PATCH`: renomear **não** muda `atualizada` (não reordena a lista). `alertaVisto` fora de 60, 85 e 95 é 400.
+- `POST /mensagens` reenviado com o mesmo `idCliente` devolve `202` com a mensagem já gravada e a tarefa atual (sem gravar nem travar de novo; se a tarefa ainda está `na_fila`, reenfileira a mesma mensagem, o que o consumidor já descarta por `comecarTarefa`).
+- Limite de texto da mensagem: 300 mil caracteres (`413`). `idCliente`: `[A-Za-z0-9._-]{1,64}`. Até `MAX_ARQUIVOS` anexos e `MAX_LOTE_MB` no total.
+- Título automático: primeiros 60 caracteres do texto (espaços colapsados) ou o nome do primeiro anexo, só se ainda for "Nova conversa". Título digitado: até 80 caracteres.
+- `GET /decks/{versao}`: `versao` inteira de 1 a 9999, `fmt` padrão `pptx`; `Content-Disposition: attachment; filename="atlas-deck-v{n}.{fmt}"`, `Cache-Control: private, no-store`.
+- Mensagens da lista: `GET /mensagens?antes=` exige inteiro >= 1; `limite` de 1 a 100 (padrão 50).
+- Cursor de `GET /api/conversas`: `{atualizada}_{id}`, opaco para o cliente; cursor malformado é 400.
 
 ## Eventos SSE (`/eventos`)
 
@@ -124,7 +144,7 @@ A fila entrega **pelo menos uma vez**. O consumidor sempre começa por `comecarT
 | `comecarTarefa(tarefaId, tentativa)` | `{ ok: true, tarefa, payload }` ou `{ ok: false, motivo: "inexistente" \| "encerrada" \| "em_execucao" \| "purgada" }` |
 | `batimento(tarefaId)` | `{ ativa, cancelada }`. Renova o lease. Chamar a cada poucos segundos durante a tarefa e abortar o `fetch` em andamento se `cancelada`. `ativa: false`: parar sem gravar nada |
 | `cancelado(tarefaId?)` | `boolean` (para `checarCancelado()` entre chamadas ao LLM) |
-| `cancelar()` | `{ ok, cancelada, cancelando, tarefa }`. Na fila: encerra na hora e restaura o caso. Rodando: grava a marca; o consumidor encerra com `terminarTarefa("cancelada")`. Idempotente |
+| `cancelar()` | `{ ok, cancelada, cancelando, tarefa, payload? }`. Na fila: encerra na hora, restaura o caso e devolve em `payload` o payload da tarefa encerrada (**campo novo**: a rota de cancelamento lê `PayloadTurno.mensagemId` daqui para apagar a mensagem do assessor, já que o consumidor nunca executará essa tarefa). Rodando: grava a marca; o consumidor encerra com `terminarTarefa("cancelada")`. Idempotente |
 | `publicar(evento, dados, tarefaId?)` | `id` do evento, ou `null` se foi ignorado (conversa purgada, ou `tarefaId` que não está mais ativa). Evento `contexto` também fica guardado para `estado()` |
 | `salvarCaso(caso, { versao?, tarefaId? })` | `{ ok: true, versao }` ou `{ ok: false, motivo: "versao" \| "tarefa" \| "purgada", versao }`. Com `tarefaId`, só grava enquanto a tarefa estiver ativa |
 | `obterCaso()` | `{ caso \| null, versao }`. O caso é JSON puro (sem o texto das fontes, que fica em R2) |
@@ -135,7 +155,7 @@ A fila entrega **pelo menos uma vez**. O consumidor sempre começa por `comecarT
 | `estado()` | `{ tarefa, contexto, alertasVistos, purgada }` para `GET /api/conversas/{id}` |
 | `purgar()` | `{ ok: true }`. Apaga tudo e deixa só a marca `purgada` |
 
-Garantias: uma só tarefa ativa por conversa (dois `iniciarTarefa` simultâneos dão um `ok` e um `ocupado`); tarefa sem batimento por 20 min expira como `erro` e o caso volta ao instantâneo; depois de `purgar()` toda escrita é recusada, então um consumidor atrasado não recria o que foi apagado. Purga completa, ordem recomendada: cancelar → R2 (prefixo `u/{usuarioId}/c/{conversaId}/`) → `purgar()` do DO → linhas de D1; cada passo é idempotente e a linha de D1 com `apagada` é o que mantém a purga pendente até terminar.
+Garantias: uma só tarefa ativa por conversa (dois `iniciarTarefa` simultâneos dão um `ok` e um `ocupado`); tarefa sem batimento por 20 min expira como `erro` e o caso volta ao instantâneo; depois de `purgar()` toda escrita é recusada, então um consumidor atrasado não recria o que foi apagado. Purga completa, ordem **implementada** (`lib/tarefas/purga.ts`): cancelar → `purgar()` do DO → R2 (prefixo `u/{usuarioId}/c/{conversaId}/`) → linhas de D1; cada passo é idempotente e a linha de D1 com `apagada` é o que mantém a purga pendente até terminar. O DO vai antes do R2 (a ordem recomendada antes era R2 primeiro): depois de `purgar()`, o consumidor de uma tarefa em andamento perde o `batimento` e as escritas no DO e para, então não grava fonte nova num prefixo já limpo.
 
 ### Eventos SSE (comportamento do DO)
 
@@ -151,6 +171,30 @@ Como o plano (seção 4.1), mais: `mensagens.id_cliente`; índice único parcial
 - `DECK`: a mesma imagem do docker-compose (porta 8180), instância `standard-1`. Uso igual, com o caminho do deck-service.
 - `max_instances` 2 para ambos; só vale em produção (local não limita).
 
+## Rotas, purga e cron (fase 2)
+
+Código: `app/api/**/route.ts` são só adaptadores; a lógica está em `lib/rotas/*.ts` (`(req, id, env)`), o que permite testar no workerd com `env` injetado. `lib/rotas/conversaRpc.ts` tipa o RPC do DO: o stub do workers-types devolve `never` para métodos cujo resultado tem campo `unknown` (`caso`, `contexto`, `payload`), então use `conversaRpc(id, env)` em vez de `conversaDo` quando precisar do resultado tipado.
+
+- **Enviar mensagem (ordem anti-órfã):** `iniciarTarefa("turno", PayloadTurno)` primeiro, depois `gravarMensagem` (com o `id` já guardado no payload) e então `TAREFAS.send`. Quem perde a corrida recebe 409 sem ter gravado nada, então não há mensagem órfã para apagar. Falha em D1 ou na fila libera a trava (`terminarTarefa("erro")`) e apaga a mensagem. Entre a gravação e o envio a rota confere `cancelado(tarefaId)`: se o assessor cancelou nesse intervalo, apaga a mensagem e responde 409.
+- **Anexos:** `PUT` com `FixedLengthStream(Content-Length)` direto para o R2, sem `Buffer`. Chave `u/{usuario}/c/{conversa}/anexos/{id16hex}-{nome}`: o hash do conteúdo não existe antes de gravar em streaming, então o id é aleatório (o mesmo arquivo enviado duas vezes dá duas chaves). O nome é sanitizado (sem `/`, `\`, controle, ponto inicial; até 120 caracteres). Limites por extensão: 10 MB para `.txt .md .json .csv .vtt .docx .odt .pptx`, 5 MB para imagem, `MAX_UPLOAD_MB` para `.pdf .xlsx .xls` (`limiteAnexoMb` em `lib/rotas/anexos.ts`). A rota confere de novo, depois do upload, se a conversa ainda existe e apaga o objeto se não. Em `next dev` (Node, sem `FixedLengthStream`) lê o corpo para a memória, o que é seguro pelo limite.
+- **Mensagem com anexos:** cada chave precisa estar sob `anexos/` do usuário e da conversa e existir no R2 (`head`); o `Anexo` do payload é montado a partir do objeto (tamanho e tipo reais).
+- **`POST /acoes`:** confere tarefa ativa (409), prontidão pelo caso do DO (422), saúde do deck por `env.DECK` (`GET /health` no Container com `schema_hash`; falha ou prazo de 30 s é 503) e só então pega a trava. Se o consumidor expuser um helper de saúde, troque `saudeDeck` em `lib/rotas/acoes.ts` por ele.
+- **Excluir:** `marcarApagada` (D1) → `cancelar()` → `TAREFAS.send({tipo: "purga"})` → 204. Qualquer falha depois da marca não muda a resposta; a purga fica pendente e o cron a refaz.
+- **Purga (`lib/tarefas/purga.ts`):** só age em conversa marcada `apagada` (ou cuja linha já não existe); mensagem de purga para conversa ativa ou com dono diferente é ignorada.
+- **Cron (`lib/tarefas/purgaAgendada.ts`, diário 06:00 UTC):** (1) reenfileira purgas pendentes com `apagada` há mais de 1 h; (2) marca como apagadas e enfileira as conversas com `atualizada` < agora − 90 dias (a marca reconfere `atualizada`, então uma conversa reaberta no intervalo fica). Lotes de 100, até 1000 de cada por execução.
+- **`lib/db/*`:** `gravarMensagem` aceita também `id?` e `titulo?` (além do contrato); `seq` é `MAX+1` dentro do próprio INSERT e `id_cliente` repetido devolve a mensagem já gravada. `atualizarConversa` não age em conversa apagada. Tipos da API em `lib/db/tipos.ts` (`Anexo`, `MensagemSalva`, `ConversaResumo`, `Contexto`, `PayloadTurno`, `PayloadDeck`).
+
+### Retenção de 90 dias no R2 (rede de segurança, decisão D1)
+
+Não há API local para ciclo de vida de R2. Em staging/produção, depois de criar o bucket:
+
+```sh
+npx wrangler r2 bucket lifecycle add atlas-arquivos expirar-90-dias --expire-days 90 --force
+npx wrangler r2 bucket lifecycle list atlas-arquivos
+```
+
+Cuidado: a regra conta a idade **do objeto** (desde o upload), não o último uso da conversa. Uma conversa ativa há mais de 90 dias perderia os anexos e decks mais antigos. O cron (D1) é a retenção correta, por `atualizada`; a regra do bucket só limpa o que escapar da purga. Se conversas longas forem esperadas, use um prazo maior no bucket (por exemplo `--expire-days 180`). Decisão do orquestrador.
+
 ## Ambiente local
 
 | Comando | O que roda | Serve para |
@@ -164,6 +208,8 @@ Como o plano (seção 4.1), mais: `mensagens.id_cliente`; índice único parcial
 **Decisão para `next dev`: DOs, filas e Containers só existem em `npm run preview`.** O `getPlatformProxy` (que o `next dev` usa) não carrega as classes de DO do mesmo Worker; a solução recomendada pela Cloudflare é um Worker auxiliar com `script_name`, mas a fila continuaria sem consumidor (o produtor do Next e o consumidor do Worker auxiliar ficam em instâncias separadas do Miniflare), então o chat não funcionaria de ponta a ponta mesmo assim. Em `next dev`, `env().DB` e `env().ARQUIVOS` funcionam; `env().TAREFAS.send()` não falha mas ninguém consome; `conversaDo(...)` falha com `internal error` na primeira chamada de RPC. O `wrangler` imprime no início um aviso sobre as classes `Conversa`, `Extrator` e `DeckService`; é esperado.
 
 Testes de rota que precisem do DO ou da fila devem ir em `tests/workers/` (com o entry de teste) ou usar dublês em `tests/` (Vitest comum).
+
+`tests/workers/entry.ts` monta as rotas reais de `lib/rotas` em `/api/...` (mesma tabela de métodos e caminhos de `app/api/**`), com um invólucro de `TAREFAS` que **só registra** as mensagens `turno` e `deck` (`GET /teste/fila`) e envia `purga` à fila real, e um `DECK` falso. Cabeçalhos de teste: `x-teste-fila: falha`, `x-teste-deck: fora|schema`, `x-teste-ambiente: production`. `POST /teste/cron` roda `purgaAgendada`. Os testes estão em `tests/workers/rotas.test.ts`.
 
 ## Interface rotas ↔ consumidor (fase 2/3)
 

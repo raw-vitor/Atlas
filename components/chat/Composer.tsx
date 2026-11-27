@@ -1,16 +1,24 @@
 "use client";
 import { Box, Flex, IconButton, Text, Textarea } from "@chakra-ui/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LuArrowUp, LuPaperclip, LuSquare } from "react-icons/lu";
 import { ACCEPT, EXT_OK, MAX_ARQUIVOS, MAX_ARQUIVO_MB_PADRAO, extensaoDe } from "@/lib/formatos";
 import { AttachmentChip } from "./AttachmentChip";
 
 
-export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onCancelar, desabilitado }: {
+export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onCancelar, desabilitado, medidor, alerta, foco }: {
   texto: string; setTexto: (s: string) => void; arquivos: File[]; setArquivos: (f: File[]) => void;
   onEnviar: () => void; onCancelar: () => void; desabilitado: boolean;
+  /** Medidor de contexto, ao lado do botão de enviar. */
+  medidor?: ReactNode;
+  /** Faixa de alerta acima do campo. */
+  alerta?: ReactNode;
+  /** Muda para levar o foco ao campo de texto (ex.: ao abrir uma conversa nova). */
+  foco?: number;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const campo = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { if (foco) campo.current?.focus(); }, [foco]);
   const [recusas, setRecusas] = useState<string[]>([]);
   const adicionar = (novos: File[]) => {
     const aceitos = [...arquivos], r: string[] = [];
@@ -27,6 +35,8 @@ export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onC
   };
   const podeEnviar = !desabilitado && (texto.trim().length > 0 || arquivos.length > 0);
   return (
+    <>
+    {alerta}
     <Box w="full" maxW="820px" mx="auto" px="4" pb="4">
       <Box bg="white" borderWidth="1px" borderColor="nevoa" rounded="2xl" shadow="sm" p="2" _focusWithin={{ borderColor: "eqi" }}>
         {arquivos.length > 0 && (
@@ -42,10 +52,11 @@ export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onC
             onChange={(e) => { adicionar(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
           <IconButton aria-label="Anexar arquivos" variant="ghost" onClick={() => input.current?.click()}><LuPaperclip /></IconButton>
           <Textarea
-            value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ex.: R2 do Elisandro, dia 13/11, assessor Luiz"
+            ref={campo} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ex.: R2 do Elisandro, dia 13/11, assessor Luiz"
             autoresize maxH="10lh" rows={1} border="none" outline="none" resize="none" _focusVisible={{ outline: "none", boxShadow: "none" }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (podeEnviar) onEnviar(); } }}
           />
+          {medidor}
           {desabilitado ? (
             <IconButton aria-label="Cancelar" rounded="full" bg="profundo" color="neve" _hover={{ bg: "floresta" }} onClick={onCancelar}>
               <LuSquare />
@@ -58,5 +69,6 @@ export function Composer({ texto, setTexto, arquivos, setArquivos, onEnviar, onC
         </Flex>
       </Box>
     </Box>
+    </>
   );
 }

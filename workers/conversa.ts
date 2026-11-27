@@ -70,6 +70,11 @@ export interface ResultadoCancelar {
   ok: true;
   /** A tarefa estava na fila e foi encerrada na hora (o consumidor, ao receber a mensagem, a descarta). */
   cancelada: boolean;
+  /**
+   * Só quando `cancelada`: o payload da tarefa encerrada (`PayloadTurno` para `turno`). Como o consumidor nunca chegará a executar
+   * essa tarefa, quem apaga a mensagem do assessor é a rota de cancelamento, que lê `mensagemId` daqui.
+   */
+  payload?: unknown;
   /** A tarefa já rodava: a marca foi gravada e o consumidor a vê em `batimento`/`cancelado`. */
   cancelando: boolean;
   tarefa: TarefaPublica | null;
@@ -286,8 +291,9 @@ export class Conversa extends DurableObject<CloudflareEnv> {
     const t = this.tarefaAtiva();
     if (!t) return { ok: true, cancelada: false, cancelando: false, tarefa: null };
     if (t.status === "na_fila") {
+      const payload = t.payload === null ? null : JSON.parse(t.payload);
       const e = this.encerrar(t, "cancelada", { restaurar: true });
-      return { ok: true, cancelada: true, cancelando: false, tarefa: e };
+      return { ok: true, cancelada: true, cancelando: false, tarefa: e, payload };
     }
     this.sql.exec("UPDATE tarefa SET cancelar = 1 WHERE id = ?", t.id);
     return { ok: true, cancelada: false, cancelando: true, tarefa: publica(t) };

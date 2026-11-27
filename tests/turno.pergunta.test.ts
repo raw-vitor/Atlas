@@ -1,9 +1,8 @@
-/** Rota de mensagens: perguntas sobre o caso vão para responderPergunta; texto não reconhecido não devolve o resumo de novo. */
+/** Lógica do turno (lib/tarefas/execucao/logica-turno.ts, o antigo POST de mensagens): perguntas sobre o caso vão para responderPergunta; texto não reconhecido não devolve o resumo de novo. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const perguntar = vi.fn();
 const responder = vi.fn();
-vi.mock("@/lib/deck", async (orig) => ({ ...(await orig<typeof import("@/lib/deck")>()), deckSaude: async () => ({ ok: true }) }));
 vi.mock("@/lib/bedrock", async (orig) => ({
   ...(await orig<typeof import("@/lib/bedrock")>()),
   perguntarJson: (...a: unknown[]) => perguntar(...a),
@@ -12,9 +11,10 @@ vi.mock("@/lib/bedrock", async (orig) => ({
 }));
 vi.mock("@/lib/conversa", () => ({ responderPergunta: (...a: unknown[]) => responder(...a) }));
 
-import { hashTexto, novoCaso, type Caso } from "../lib/caso";
+import { casoAvulso, hashTexto, type Caso } from "../lib/caso";
+import { novoUso } from "../lib/bedrock";
+import { rodarTurno } from "../lib/tarefas/execucao/logica-turno";
 import type { Analise, Lead } from "../lib/types";
-import { POST } from "../app/api/conversas/[id]/mensagens/route";
 
 const TRANSCRICAO = "Assessor: e a retirada?\nAna: preciso de 10 mil por mês para viver.";
 const lead: Lead = { primeiro_nome: "Ana", situacao: [], objetivos: ["Retirada de R$ 10 mil por mês"], restricoes: [], frases_literais: [],
@@ -22,7 +22,7 @@ const lead: Lead = { primeiro_nome: "Ana", situacao: [], objetivos: ["Retirada d
 
 /** Caso pronto para gerar: transcrição lida, lead completo e carteira com total. */
 function casoAberto(): Caso {
-  const c = novoCaso();
+  const c = casoAvulso();
   c.fontes = [{ nome: "r1.txt", papel: "transcricao", origemPapel: "usuario", texto: TRANSCRICAO, hash: hashTexto(TRANSCRICAO) }];
   c.lead = { ...lead };
   c.analise = { total: 1_164_342.84, n_ativos: 10, por_classe: {}, pct_classe: {}, subclasses: {} } as unknown as Analise;
@@ -32,24 +32,19 @@ function casoAberto(): Caso {
 const instrucao = (o: Partial<{ usar_transcricao: boolean; primeiro_nome: string; perfil: string; objetivos: string[]; pergunta: boolean }>) =>
   perguntar.mockResolvedValue({ usar_transcricao: false, primeiro_nome: "", perfil: "", objetivos: [], pergunta: false, ...o });
 
-/** Envia a mensagem e devolve os eventos SSE na ordem. */
-async function mandar(caso: Caso, msg: string, arquivos: File[] = []) {
-  const fd = new FormData();
-  fd.set("message", msg);
-  for (const f of arquivos) fd.append("files", f);
-  const r = await POST(new Request(`http://x/api/conversas/${caso.id}/mensagens`, { method: "POST", body: fd }),
-    { params: Promise.resolve({ id: caso.id }) } as never);
-  expect(r.status).toBe(200);
-  const corpo = await r.text();
-  const eventos = corpo.split("\n\n").filter(Boolean).map((b) => {
-    const [ev, data] = b.split("\n");
-    return { evento: ev.replace(/^event: /, ""), dados: JSON.parse(data.replace(/^data: /, "")) as Record<string, unknown> };
+/** Roda o turno e devolve os eventos emitidos, na ordem. */
+async function mandar(caso: Caso, msg: string, arquivos: { nome: string; texto: string }[] = []) {
+  const eventos: { evento: string; dados: Record<string, unknown> }[] = [];
+  const r = await rodarTurno({
+    caso, texto: msg, arquivos: arquivos.map((a) => ({ nome: a.nome, buf: Buffer.from(a.texto) })), uso: novoUso(),
+    enviar: (evento, dados) => eventos.push({ evento, dados: dados as Record<string, unknown> }),
   });
   const textos = eventos.filter((e) => e.evento === "texto").map((e) => String(e.dados.texto));
+  expect(textos).toEqual([r.texto]);
   return { eventos, textos, nomes: eventos.map((e) => e.evento) };
 }
 
-describe("POST /api/conversas/[id]/mensagens: perguntas e mensagens não reconhecidas", () => {
+describe("turno: perguntas e mensagens não reconhecidas", () => {
   beforeEach(() => { perguntar.mockReset(); responder.mockReset(); });
 
   it("pergunta num caso com fontes vai para responderPergunta e não devolve o resumo", async () => {
@@ -62,9 +57,8 @@ describe("POST /api/conversas/[id]/mensagens: perguntas e mensagens não reconhe
     expect(responder.mock.calls[0][0]).toBe(caso);
     expect(responder.mock.calls[0][1]).toBe("por que o 10 mil não bate?");
     expect(textos).toEqual(["O R$ 10 mil é a retirada mensal que a Ana citou na R1."]);
-    expect(nomes).toEqual(["atividade", "texto", "caso", "fim"]);
+    expect(nomes).toEqual(["atividade", "texto", "caso"]);
     expect(JSON.stringify({ lead: caso.lead, fontes: caso.fontes })).toBe(antes);
-    expect(caso.ocupado).toBe(false);
   });
 
   it("guarda no histórico a mensagem do assessor e a resposta do Atlas", async () => {
@@ -85,7 +79,6 @@ describe("POST /api/conversas/[id]/mensagens: perguntas e mensagens não reconhe
     expect(textos[0]).not.toContain("Pronto para gerar os slides");
     expect(textos[0]).not.toContain("ainda falta");
     expect(caso.historico.map((m) => m.papel)).toEqual(["assessor", "atlas"]);
-    expect(caso.ocupado).toBe(false);
   });
 
   it("caso incompleto: a mensagem não reconhecida diz o que falta", async () => {
@@ -110,21 +103,17 @@ describe("POST /api/conversas/[id]/mensagens: perguntas e mensagens não reconhe
     expect(responder).not.toHaveBeenCalled();
     expect(textos[0]).toContain("Anotei no lead: perfil Moderado.");
     expect(caso.lead?.perfil).toBe("Moderado");
-    expect(caso.ocupado).toBe(false);
   });
 
-  it("erro em responderPergunta libera o caso e avisa o assessor", async () => {
+  it("erro em responderPergunta sobe para o ciclo, que restaura o caso e avisa o assessor", async () => {
     instrucao({ pergunta: true });
     responder.mockRejectedValue(new Error("falhou"));
-    const caso = casoAberto();
-    const { nomes } = await mandar(caso, "por que?");
-    expect(nomes).toContain("erro");
-    expect(caso.ocupado).toBe(false);
+    await expect(mandar(casoAberto(), "por que?")).rejects.toThrow("falhou");
   });
 
   it("só arquivo repetido continua com o resumo", async () => {
     const caso = casoAberto();
-    const { textos } = await mandar(caso, "", [new File([TRANSCRICAO], "r1.txt")]);
+    const { textos } = await mandar(caso, "", [{ nome: "r1.txt", texto: TRANSCRICAO }]);
     expect(perguntar).not.toHaveBeenCalled();
     expect(textos[0]).toContain("Pronto para gerar os slides");
     expect(textos[0]).toContain("Não usei: r1.txt (já enviado nesta conversa)");
@@ -139,7 +128,7 @@ describe("POST /api/conversas/[id]/mensagens: perguntas e mensagens não reconhe
   });
 
   it("conversa sem fontes continua com a mensagem de boas-vindas", async () => {
-    const caso = novoCaso();
+    const caso = casoAvulso();
     const { textos } = await mandar(caso, "oi");
     expect(perguntar).not.toHaveBeenCalled();
     expect(textos[0]).toContain("Para começar, envie a carteira do lead e a transcrição da R1.");

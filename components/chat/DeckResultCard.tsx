@@ -1,12 +1,15 @@
 "use client";
 import { Box, Button, Flex, Heading, Stack, Text } from "@chakra-ui/react";
 import { LuDownload } from "react-icons/lu";
+import { urlDeck } from "./api";
 import { WarningsPanel } from "./WarningsPanel";
 import type { Resultado } from "./types";
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function DeckResultCard({ jobId, r }: { jobId: string; r: Resultado }) {
+export function DeckResultCard({ conversaId, versao, r }: { conversaId: string; versao?: number; r: Resultado }) {
+  const pptx = r.arquivos.pptx ? urlDeck(conversaId, versao, "pptx", r.arquivos.pptx) : null;
+  const pdf = r.arquivos.pdf ? urlDeck(conversaId, versao, "pdf", r.arquivos.pdf) : null;
   return (
     <Stack gap="3" w="full" maxW="640px">
       <Box bg="white" borderWidth="1px" borderColor="nevoa" rounded="xl" p="4" shadow="xs">
@@ -17,14 +20,14 @@ export function DeckResultCard({ jobId, r }: { jobId: string; r: Resultado }) {
           <Box><Text color="gray.600">Perfil</Text><Text fontWeight="semibold">{r.resumo.perfil}</Text></Box>
         </Flex>
         <Flex gap="2" mt="4" wrap="wrap">
-          {r.arquivos.pptx && (
+          {pptx && (
             <Button asChild bg="profundo" color="neve" _hover={{ bg: "floresta" }}>
-              <a href={`/api/jobs/${jobId}/download?fmt=pptx`} download><LuDownload /> Baixar PPTX</a>
+              <a href={pptx} download><LuDownload /> Baixar PPTX</a>
             </Button>
           )}
-          {r.arquivos.pdf && (
+          {pdf && (
             <Button asChild variant="outline" borderColor="profundo" color="profundo">
-              <a href={`/api/jobs/${jobId}/download?fmt=pdf`} download><LuDownload /> Baixar PDF</a>
+              <a href={pdf} download><LuDownload /> Baixar PDF</a>
             </Button>
           )}
         </Flex>

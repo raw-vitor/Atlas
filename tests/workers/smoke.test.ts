@@ -55,7 +55,7 @@ describe("plataforma local (wrangler/Miniflare)", () => {
     expect(await t.rpc(id, "obterCaso")).toEqual({ caso: { lead: { nome: "Fulano" } }, versao: 1 });
   });
 
-  it("Fila: o consumidor do Worker recebe a mensagem e dá ack (stub)", async () => {
+  it("Fila: o consumidor do Worker recebe a mensagem de purga, executa e dá ack", async () => {
     t.server.clearLogs();
     const r = await t.server.fetch("/enfileirar", {
       method: "POST",
@@ -63,11 +63,12 @@ describe("plataforma local (wrangler/Miniflare)", () => {
     });
     expect(r.ok).toBe(true);
     const fim = Date.now() + 15000;
-    const viu = () => t.server.getLogs().some((l) => String(l.message).includes("purga recebida (stub)"));
+    const viu = () => t.server.getLogs().some((l) => String(l.message).includes("purga concluída"));
     while (!viu() && Date.now() < fim) await new Promise((res) => setTimeout(res, 100));
     expect(viu()).toBe(true);
     // Sem conteúdo do lead no log: só tipo e ids.
     const log = JSON.stringify(t.server.getLogs());
     expect(log).not.toMatch(/u1@eqi/);
+    expect(log).not.toContain("[tarefa] falhou"); // ack, sem reentrega
   });
 });

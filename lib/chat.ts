@@ -57,8 +57,12 @@ export function papeisDaMensagem(msg: string, nomes: string[]): Record<string, P
   return out;
 }
 
+/** Converte um arquivo em texto. No consumidor da fila, pdf/xlsx/xls vão para o Container e o resto roda no Worker (lib/tarefas/execucao/extracao.ts). */
+export type LeitorDeArquivo = (nome: string, buf: Buffer, uso: Uso) => Promise<string>;
+
 export async function interpretar(
   msg: string, files: { nome: string; buf: Buffer }[], uso: Uso, declarados: Record<string, Papel> = {}, triador: TriadorLlm = triarComLlm,
+  leitor: LeitorDeArquivo = toText,
 ): Promise<Interpretado> {
   const assessor = extrairAssessor(msg);
   const data = extrairData(msg);
@@ -93,7 +97,7 @@ export async function interpretar(
     const original = vistos.get(hash);
     if (original) { base.ignorados.push(`${f.nome} (cópia de ${original})`); continue; }
     vistos.set(hash, f.nome);
-    try { anexos.push({ ...f, texto: await toText(f.nome, f.buf, uso) }); }
+    try { anexos.push({ ...f, texto: await leitor(f.nome, f.buf, uso) }); }
     catch (e) { if (e instanceof CanceladoError) throw e; base.ignorados.push(`${f.nome} (${e instanceof Error ? e.message : "não consegui ler"})`); }
   }
 

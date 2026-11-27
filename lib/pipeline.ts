@@ -1,18 +1,27 @@
 /** Porte de app/pipeline.py: mesmas etapas, mesma ordem. */
-import path from "node:path";
 import * as calc from "./calc";
-import { deckSaude, renderizar } from "./deck";
-import { toText } from "./ingest";
-import type { Progress, Resultado } from "./jobs";
+import { renderizar } from "./deck";
 import { checar } from "./validate";
 import * as steps from "./steps";
 import type { ChatJson } from "./steps";
 import type { Uso } from "./bedrock";
 import type { Ativo } from "./types";
 import { CONFIANCA_MINIMA, classificarPorConteudo } from "./classificacao";
-import { MAX_TRANSCRICAO_CHARS, juntarTranscricoes, transcricaoJunta, aplicarAjustes, casoAvulso, eDerivada, hashTexto, limparNome, NOME_FONTE_DERIVADA, removerDerivada, type Caso } from "./caso";
+import { MAX_TRANSCRICAO_CHARS, juntarTranscricoes, transcricaoJunta, aplicarAjustes, eDerivada, hashTexto, limparNome, NOME_FONTE_DERIVADA, removerDerivada, type Caso } from "./caso";
 
 export { MAX_TRANSCRICAO_CHARS, juntarTranscricoes };
+
+/** Progresso de uma etapa longa: `etapa` é o código da fase, `pct` vai de 0 a 100. */
+export type Progress = (etapa: string, pct: number, msg: string) => void;
+
+/** O que o card do deck mostra. `arquivos` mapeia o formato ao nome (ou, depois de gravado, ao link de download). */
+export interface Resultado {
+  arquivos: Record<string, string>;
+  avisos: string[];
+  pendencias: string[];
+  resumo: { lead: string; total: number; perfil: string };
+  tokens: { chamadas: number; entrada: number; saida: number };
+}
 
 const chave = (nome: string) => nome.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
@@ -51,10 +60,6 @@ export function dataMaisRecente(datas: string[]): string {
 }
 
 export interface Anexo { nome: string; buf: Buffer; texto?: string }
-export interface Entrada {
-  carteiras: Anexo[]; transcricoes: Anexo[]; assessor: string; dataR2: Date; // dataR2 em UTC (só a data conta)
-  outDir: string; formatos: ("pptx" | "pdf")[];
-}
 
 const semAcento = (s: string) => s.normalize("NFKD").replace(/\p{M}/gu, "");
 
@@ -160,41 +165,28 @@ export async function rascunho(caso: Caso, chat: ChatJson, p: Progress, pct0 = 0
   caso.rascunho = { aloc, diag, dec, notas, avisos, pendencias: [...pendChecagem, ...caso.pendenciasCarteira], dataR2 };
 }
 
-/** Deck: só renderiza o rascunho no deck-service. Nenhuma chamada ao LLM. */
-export async function deck(caso: Caso, outDir: string, formatos: ("pptx" | "pdf")[], uso: Uso, p: Progress, pct0 = 88): Promise<Resultado> {
+/** O deck renderizado: os bytes de cada formato e o resumo para o card. Quem chama grava os bytes (R2). */
+export interface DeckGerado { nome: string; binarios: Partial<Record<"pptx" | "pdf", ArrayBuffer>>; resultado: Resultado }
+
+/** Deck: só renderiza o rascunho no deck-service. Nenhuma chamada ao LLM. `injetado` é o env quando não há contexto do Worker. */
+export async function deck(
+  caso: Caso, formatos: ("pptx" | "pdf")[], uso: Uso, p: Progress, pct0 = 88, injetado?: CloudflareEnv,
+): Promise<DeckGerado> {
   const lead = caso.lead, an = caso.analise, r = caso.rascunho;
   if (!lead || !an || !r) throw new Error("O rascunho ainda não existe.");
   p("deck", pct0, "Montando o deck");
   const nome = `${slug(lead.primeiro_nome)}_R2_${yyyymmdd(r.dataR2)}_${slug(caso.assessor || "Assessor")}`;
   const payload = { lead, ativos: caso.ativos, an, aloc: r.aloc, diag: r.diag, dec: r.dec, notas: r.notas, data_r2: r.dataR2,
     data_posicao: caso.dataPosicao, pendencias: r.pendencias, nome_arquivo: nome };
+  const binarios: DeckGerado["binarios"] = {};
   const arquivos: Record<string, string> = {};
   await Promise.all(formatos.map(async (f) => {
-    await renderizar(payload, f, path.join(outDir, `${nome}.${f}`));
+    binarios[f] = await renderizar(payload, f, injetado);
     arquivos[f] = `${nome}.${f}`;
   }));
   p("fim", 100, "Pronto");
-  return { arquivos, avisos: r.avisos.map((a) => a.texto), pendencias: r.pendencias, resumo: { lead: lead.primeiro_nome, total: an.total, perfil: lead.perfil }, tokens: { ...uso } };
-}
-
-/** Leitura + Rascunho + Deck em sequência. Mesmo resultado de antes da divisão (tests/paridade.test.ts). */
-export async function rodar(inp: Entrada, chat: ChatJson, uso: Uso, p: Progress): Promise<Resultado> {
-  // Falha rápido se o serviço do deck estiver fora, antes de gastar minutos de LLM.
-  const saude = await deckSaude();
-  if (!saude.ok) throw new Error(`O serviço que monta o deck não está pronto (${saude.erro}). Avise o time e tente de novo.`);
-  p("ingest", 3, "Lendo arquivos");
-  const ler = (a: Anexo) => a.texto ?? toText(a.nome, a.buf, uso);
-  const caso = casoAvulso();
-  caso.assessor = inp.assessor; caso.dataR2 = ymd(inp.dataR2);
-  const fonte = async (a: Anexo, papel: "carteira" | "transcricao") => {
-    const texto = await ler(a);
-    return { nome: a.nome, papel, origemPapel: "declarado", texto, hash: hashTexto(texto) };
+  return {
+    nome, binarios,
+    resultado: { arquivos, avisos: r.avisos.map((a) => a.texto), pendencias: r.pendencias, resumo: { lead: lead.primeiro_nome, total: an.total, perfil: lead.perfil }, tokens: { ...uso } },
   };
-  caso.fontes = await Promise.all([...inp.carteiras.map((a) => fonte(a, "carteira")), ...inp.transcricoes.map((a) => fonte(a, "transcricao"))]);
-
-  await leitura(caso, chat, p);
-  if (!caso.ativos.length) throw new Error("Não encontrei ativos na carteira enviada.");
-  if (!caso.analise || caso.analise.total <= 0) throw new Error("O total da carteira ficou zerado. Confira o arquivo.");
-  await rascunho(caso, chat, p, 38, 85);
-  return deck(caso, inp.outDir, inp.formatos, uso, p);
 }

@@ -1,12 +1,10 @@
-import { autorizado, negado } from "@/lib/auth";
-import { obterCaso, publicoCaso } from "@/lib/caso";
+import { env } from "@/lib/cf";
+import { deleteConversa, getConversa, patchConversa } from "@/lib/rotas/conversas";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request, ctx: RouteContext<"/api/conversas/[id]">) {
-  if (!autorizado(req)) return negado();
-  const c = obterCaso((await ctx.params).id);
-  if (!c) return Response.json({ erro: "Conversa não encontrada ou expirada" }, { status: 404 });
-  return Response.json(publicoCaso(c));
-}
+type Ctx = RouteContext<"/api/conversas/[id]">;
+
+export const GET = async (req: Request, ctx: Ctx) => getConversa(req, (await ctx.params).id, env());
+export const PATCH = async (req: Request, ctx: Ctx) => patchConversa(req, (await ctx.params).id, env());
+export const DELETE = async (req: Request, ctx: Ctx) => deleteConversa(req, (await ctx.params).id, env());

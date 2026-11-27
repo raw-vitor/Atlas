@@ -1,6 +1,5 @@
 import { CanceladoError, sinalAtual } from "./cancelamento";
-import fs from "node:fs";
-import path from "node:path";
+import { env as ambiente } from "./cf";
 import { config } from "./config";
 import constantes from "./schemas/constantes.json";
 
@@ -41,33 +40,46 @@ export function mensagem422(corpo: string): string | null {
 
 const sinalDeck = () => { const ext = sinalAtual(); const t = AbortSignal.timeout(300_000); return ext ? AbortSignal.any([ext, t]) : t; };
 
-export async function renderizar(payload: object, formato: "pptx" | "pdf", destino: string): Promise<void> {
+/** Instância única do Container: o deck já é sequencial por caso, e `max_instances` só vale em produção. */
+const INSTANCIA_DECK = "pool-0";
+
+/**
+ * Chama o deck-service. No Worker (e em `wrangler dev`) é o Container do binding `DECK`; sem o binding (testes em Node, `next dev`)
+ * cai no `DECK_SERVICE_URL`, o mesmo serviço Python do docker-compose. `injetado` é o env dos testes e da rota de ações.
+ */
+async function pedirDeck(caminho: string, init: RequestInit, injetado?: CloudflareEnv): Promise<Response> {
+  let ns: CloudflareEnv["DECK"] | undefined;
+  try { ns = ambiente(injetado).DECK; } catch { ns = undefined; } // fora de um contexto do Worker (Node puro)
+  if (!ns) return fetch(`${config.deckServiceUrl}${caminho}`, init);
+  return ns.get(ns.idFromName(INSTANCIA_DECK)).fetch(new Request(`http://deck${caminho}`, init));
+}
+
+/** Corpo do deck-service para um formato. Lança CanceladoError se o fluxo foi cancelado durante a chamada. */
+export async function renderizar(payload: object, formato: "pptx" | "pdf", injetado?: CloudflareEnv): Promise<ArrayBuffer> {
   const ext = sinalAtual();
   let r: Response;
   try {
-    r = await fetch(`${config.deckServiceUrl}/render`, {
+    r = await pedirDeck("/render", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...payload, formato }), signal: sinalDeck(),
-    });
+    }, injetado);
   } catch (e) { if (ext?.aborted) throw new CanceladoError(); throw e; }
   if (!r.ok) {
     const corpo = await r.text();
     if (r.status === 422) {
-      console.error("deck-service 422:", corpo.slice(0, 4000)); // o JSON completo fica só no log
-      const msg = mensagem422(corpo);
+      const msg = mensagem422(corpo); // só nomes de campos e tamanhos; o corpo cru cita trechos do lead e não vai para o log
+      console.error("deck-service 422:", msg ?? "corpo sem o formato esperado");
       if (msg) throw new Error(msg);
     }
     throw new Error(`deck-service ${r.status}: ${corpo.slice(0, 300)}`);
   }
-  let corpo: Buffer;
-  try { corpo = Buffer.from(await r.arrayBuffer()); } catch (e) { if (ext?.aborted) throw new CanceladoError(); throw e; }
-  fs.writeFileSync(path.join(destino), corpo);
+  try { return await r.arrayBuffer(); } catch (e) { if (ext?.aborted) throw new CanceladoError(); throw e; }
 }
 
 /** Confere se o serviço responde e se usa o mesmo schema que o Atlas (hash exportado por export_schemas.py). */
-export async function deckSaude(): Promise<{ ok: boolean; erro?: string }> {
+export async function deckSaude(injetado?: CloudflareEnv): Promise<{ ok: boolean; erro?: string }> {
   try {
-    const r = await fetch(`${config.deckServiceUrl}/health`, { signal: AbortSignal.timeout(4000) });
+    const r = await pedirDeck("/health", { signal: AbortSignal.timeout(4000) }, injetado);
     if (!r.ok) return { ok: false, erro: `HTTP ${r.status}` };
     const j = (await r.json().catch(() => ({}))) as { schema_hash?: string };
     if (j.schema_hash !== constantes.SCHEMA_HASH)
